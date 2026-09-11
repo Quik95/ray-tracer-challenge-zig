@@ -1,4 +1,4 @@
-//! Fires a virtual projectile and plots its trajectory to a PPM image.
+//! Draws the twelve hour marks of a clock face to a PPM image.
 //!
 //! With stdout redirected the image goes there, so the run can be piped into
 //! an image viewer or a file. On a terminal, dumping the pixel data would be
@@ -11,39 +11,30 @@ const Io = std.Io;
 const rt = @import("ray_tracing_challange_zig");
 const V = rt.Tup;
 const C = rt.Col;
-const Sim = rt.projectile.Default;
+const Face = rt.clock.Default;
 
-const width = 900;
-const height = 550;
-const file_name = "projectile.ppm";
+const width = 400;
+const height = 400;
+const file_name = "clock.ppm";
+
+/// How much of the canvas the face spans, as a fraction of its width.
+const radius = 3.0 / 8.0 * @as(f64, width);
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const gpa = init.gpa;
 
-    // Projectile starts one unit above the origin, velocity normalized to
-    // 1 unit/tick. Multiply the velocity to fire it farther.
-    var proj: Sim.Projectile = .{
-        .position = V.point(0, 1, 0),
-        .velocity = V.vector(1, 1.8, 0).normalize().mul(11.25),
-    };
-
-    // Gravity -0.1 unit/tick, wind -0.01 unit/tick.
-    const env: Sim.Environment = .{
-        .gravity = V.vector(0, -0.1, 0),
-        .wind = V.vector(-0.01, 0, 0),
-    };
-
     var image = try rt.Image.init(gpa, width, height);
     defer image.deinit(gpa);
 
-    const trail = C.init(1, 0.6, 0.2);
-    var ticks: usize = 0;
-    while (proj.position.y() > 0) {
-        plot(image, proj.position, trail);
-        proj = Sim.tick(env, proj);
-        ticks += 1;
-    }
+    // The face is a unit circle at the origin; scale it up to the canvas and
+    // slide the centre from the corner to the middle.
+    const to_canvas = rt.Tf.chain()
+        .scale(radius, 1, radius)
+        .translate(width / 2, 0, height / 2);
+
+    const mark = C.init(1, 0.85, 0.4);
+    for (Face.positions()) |p| plot(image, to_canvas.apply(p), mark);
 
     const stdout: Io.File = .stdout();
     const piped = !try stdout.isTty(io);
@@ -53,10 +44,7 @@ pub fn main(init: std.process.Init) !void {
     var log_buffer: [1024]u8 = undefined;
     var log_writer: Io.File.Writer = .init(if (piped) .stderr() else stdout, io, &log_buffer);
     const log = &log_writer.interface;
-    try log.print(
-        "hit the ground after {d} ticks at x = {d:.4}\n",
-        .{ ticks, proj.position.x() },
-    );
+    try log.print("placed {d} hour marks\n", .{Face.hours});
 
     if (piped) {
         var image_buffer: [64 * 1024]u8 = undefined;
@@ -74,12 +62,12 @@ pub fn main(init: std.process.Init) !void {
     try log.flush();
 }
 
-/// Plot a world-space position onto the image. Canvas y runs downwards from
-/// the top, the opposite of world y, hence the subtraction; anything that
-/// lands off the canvas is dropped.
+/// Plot a canvas-space position onto the image. The face lies in the xz
+/// plane, so z is what runs down the image; anything that lands off the
+/// canvas is dropped.
 fn plot(image: rt.Image, position: V, c: C) void {
     const x: isize = @intFromFloat(@round(position.x()));
-    const y: isize = @as(isize, height) - @as(isize, @intFromFloat(@round(position.y())));
+    const y: isize = @intFromFloat(@round(position.z()));
     _ = image.plot(x, y, c);
 }
 

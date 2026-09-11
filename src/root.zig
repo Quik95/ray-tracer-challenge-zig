@@ -10,7 +10,9 @@ pub const tuple = @import("tuple.zig");
 pub const color = @import("color.zig");
 pub const canvas = @import("canvas.zig");
 pub const matrix = @import("matrix.zig");
+pub const transform = @import("transform.zig");
 pub const projectile = @import("projectile.zig");
+pub const clock = @import("clock.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -32,6 +34,11 @@ pub const Mat2 = matrix.Mat2;
 pub const Mat3 = matrix.Mat3;
 pub const Mat4 = matrix.Mat4;
 
+/// The transformation matrices, over a float type.
+pub const Transforms = transform.Transforms;
+/// The transformations at the precision the ray tracer uses.
+pub const Tf = transform.Tf;
+
 /// Generic pixel grid, parameterized by color type.
 pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
@@ -46,7 +53,9 @@ const covered_sources = [_][]const u8{
     "color.zig",
     "canvas.zig",
     "matrix.zig",
+    "transform.zig",
     "projectile.zig",
+    "clock.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };
@@ -56,7 +65,9 @@ test {
     _ = color;
     _ = canvas;
     _ = matrix;
+    _ = transform;
     _ = projectile;
+    _ = clock;
 }
 
 test "every file in src/ is imported here" {
