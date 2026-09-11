@@ -162,7 +162,8 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         }
 
         pub fn isInvertible(self: Self) bool {
-            return !feq(T, self.determinant(), 0);
+            _ = self.inverse() catch return false;
+            return true;
         }
 
         pub const InverseError = error{Singular};
@@ -170,13 +171,18 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         /// The matrix that undoes this one. Each element of the cofactor
         /// matrix, transposed and divided by the determinant.
         pub fn inverse(self: Self) InverseError!Self {
+            @setEvalBranchQuota(100000);
+            for (self.toArray()) |row| {
+                for (row) |value| if (!std.math.isFinite(value)) return error.Singular;
+            }
             const det = self.determinant();
-            if (feq(T, det, 0)) return error.Singular;
+            if (det == 0 or !std.math.isFinite(det)) return error.Singular;
             var out: [n][n]T = undefined;
             for (0..n) |row| {
                 for (0..n) |col| {
                     // Writing to [col][row] is the transpose, done in place.
-                    out[col][row] = self.cofactor(row, col) / det;
+                    out[col][row] = (if (n == 1) @as(T, 1) else self.cofactor(row, col)) / det;
+                    if (!std.math.isFinite(out[col][row])) return error.Singular;
                 }
             }
             return init(out);
@@ -198,6 +204,38 @@ pub const Mat3 = Matrix(f64, 3);
 pub const Mat4 = Matrix(f64, 4);
 
 // --- Tests ------------------------------------------------------------------
+
+test "inverse accepts finite nonzero determinants independently of equality tolerance" {
+    inline for (precisions) |T| {
+        try checkInverseContract(T);
+        comptime try checkInverseContract(T);
+    }
+}
+
+fn checkInverseContract(comptime T: type) !void {
+    @setEvalBranchQuota(100000);
+    const M = Matrix(T, 4);
+    const small = M.init(.{
+        .{ 0.001, 0, 0, 0 },
+        .{ 0, 0.001, 0, 0 },
+        .{ 0, 0, 0.001, 0 },
+        .{ 0, 0, 0, 1 },
+    });
+    try testing.expect(small.isInvertible());
+    try testing.expect(small.mul(try small.inverse()).eql(M.identity));
+    const One = Matrix(T, 1);
+    try testing.expect((try One.init(.{.{0.000001}}).inverse()).mul(One.init(.{.{0.000001}})).eql(One.identity));
+    try testing.expectError(error.Singular, One.zero.inverse());
+    inline for (.{ std.math.inf(T), std.math.nan(T) }) |value| {
+        const invalid = One.init(.{.{value}});
+        try testing.expect(!invalid.isInvertible());
+        try testing.expectError(error.Singular, invalid.inverse());
+    }
+    const overflow = Matrix(T, 2).init(.{ .{ std.math.floatMax(T), 0 }, .{ 0, 2 } });
+    try testing.expectError(error.Singular, overflow.inverse());
+    const tiny = std.math.floatMin(T) * std.math.floatEps(T);
+    try testing.expectError(error.Singular, One.init(.{.{tiny}}).inverse());
+}
 
 const testing = std.testing;
 const V = tuple.Tup;

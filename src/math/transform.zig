@@ -109,8 +109,19 @@ pub fn Transforms(comptime T: type) type {
         /// vaguely upwards — it is squared up against the view direction
         /// here, so framing a scene takes no trigonometry.
         pub fn view(from: Tuple4, to: Tuple4, up: Tuple4) M {
-            const forward = to.sub(from).normalize();
-            const left = forward.cross(up.normalize());
+            return viewChecked(from, to, up) catch @panic("view requires finite points and nonzero, nonparallel directions");
+        }
+
+        pub const ViewError = error{Degenerate};
+
+        pub fn viewChecked(from: Tuple4, to: Tuple4, up: Tuple4) ViewError!M {
+            if (from.w() != 1 or to.w() != 1 or up.w() != 0) return error.Degenerate;
+            inline for (0..4) |i| {
+                if (!std.math.isFinite(from.v[i]) or !std.math.isFinite(to.v[i])) return error.Degenerate;
+            }
+            const forward = try to.sub(from).normalizeChecked();
+            const left = forward.cross(try up.normalizeChecked());
+            _ = try left.normalizeChecked();
             const true_up = left.cross(forward);
 
             const orientation = M.init(.{
@@ -119,7 +130,11 @@ pub fn Transforms(comptime T: type) type {
                 .{ -forward.x(), -forward.y(), -forward.z(), 0 },
                 .{ 0, 0, 0, 1 },
             });
-            return orientation.mul(translation(-from.x(), -from.y(), -from.z()));
+            const result = orientation.mul(translation(-from.x(), -from.y(), -from.z()));
+            for (result.toArray()) |row| {
+                for (row) |value| if (!std.math.isFinite(value)) return error.Degenerate;
+            }
+            return result;
         }
 
         /// A transformation under construction. Each step multiplies its
@@ -177,6 +192,30 @@ pub fn Transforms(comptime T: type) type {
 pub const Tf = Transforms(f64);
 
 // --- Tests ------------------------------------------------------------------
+
+test "checked view rejects degenerate frames" {
+    inline for (.{ f32, f64 }) |T| {
+        try checkView(T);
+        comptime try checkView(T);
+    }
+}
+
+fn checkView(comptime T: type) !void {
+    @setEvalBranchQuota(10000);
+    const F = Transforms(T);
+    const P = F.Tuple4;
+    const origin = P.point(0, 0, 0);
+    const target = P.point(0, 0, -1);
+    const up = P.vector(0, 1, 0);
+    try testing.expect((try F.viewChecked(origin, target, up)).eql(F.identity));
+    try testing.expectError(error.Degenerate, F.viewChecked(origin, origin, up));
+    try testing.expectError(error.Degenerate, F.viewChecked(origin, target, P.zero));
+    try testing.expectError(error.Degenerate, F.viewChecked(origin, target, P.vector(0, 0, 1)));
+    try testing.expectError(error.Degenerate, F.viewChecked(origin, target, P.vector(0, 0, -1)));
+    try testing.expectError(error.Degenerate, F.viewChecked(origin, target, P.vector(std.math.nan(T), 1, 0)));
+    try testing.expectError(error.Degenerate, F.viewChecked(P.point(std.math.inf(T), 0, 0), target, up));
+    try testing.expectError(error.Degenerate, F.viewChecked(P.zero, target, up));
+}
 
 const testing = std.testing;
 const V = tuple.Tup;

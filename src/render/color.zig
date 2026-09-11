@@ -56,7 +56,8 @@ pub fn Color(comptime T: type) type {
         /// Component-wise comparison within EPSILON.
         pub fn eql(a: Self, b: Self) bool {
             const diff = @abs(a.v - b.v);
-            return @reduce(.And, diff < @as(Repr, @splat(epsilon)));
+            const rgb: @Vector(3, T) = @shuffle(T, diff, undefined, @Vector(3, i32){ 0, 1, 2 });
+            return @reduce(.And, rgb < @as(@Vector(3, T), @splat(epsilon)));
         }
 
         /// Combining two light sources adds their colors.
@@ -103,6 +104,22 @@ pub fn Color(comptime T: type) type {
 pub const Col = Color(f64);
 
 // --- Tests ------------------------------------------------------------------
+
+test "color equality ignores SIMD padding" {
+    inline for (precisions) |T| {
+        const P = Color(T);
+        var padded = P.white;
+        padded.v[3] = std.math.nan(T);
+        try testing.expect(padded.eql(P.white));
+        padded.v[0] = 0;
+        try testing.expect(!padded.eql(P.white));
+        comptime {
+            var c = P.white;
+            c.v[3] = std.math.inf(T);
+            try testing.expect(c.eql(P.white));
+        }
+    }
+}
 
 const testing = std.testing;
 const C = Col;

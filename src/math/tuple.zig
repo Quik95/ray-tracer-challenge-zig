@@ -123,7 +123,19 @@ pub fn Tuple(comptime T: type) type {
 
         /// Convert a vector into a unit vector, preserving its direction.
         pub fn normalize(self: Self) Self {
-            return self.div(self.magnitude());
+            return self.normalizeChecked() catch @panic("normalize requires a finite nonzero tuple");
+        }
+
+        pub const NormalizeError = error{Degenerate};
+
+        pub fn normalizeChecked(self: Self) NormalizeError!Self {
+            inline for (0..4) |i| {
+                if (!std.math.isFinite(self.v[i])) return error.Degenerate;
+            }
+            const scale = @reduce(.Max, @abs(self.v));
+            if (scale == 0) return error.Degenerate;
+            const scaled = self.div(scale);
+            return scaled.div(scaled.magnitude());
         }
 
         /// Sum of the products of corresponding components. For unit vectors
@@ -165,6 +177,25 @@ pub fn Tuple(comptime T: type) type {
 pub const Tup = Tuple(f64);
 
 // --- Tests ------------------------------------------------------------------
+
+test "checked normalization rejects degeneracy and handles extreme finite magnitudes" {
+    inline for (precisions) |T| {
+        try checkNormalize(T);
+        comptime try checkNormalize(T);
+    }
+}
+
+fn checkNormalize(comptime T: type) !void {
+    const P = Tuple(T);
+    try testing.expectError(error.Degenerate, P.zero.normalizeChecked());
+    try testing.expectError(error.Degenerate, P.vector(std.math.inf(T), 0, 0).normalizeChecked());
+    try testing.expectError(error.Degenerate, P.vector(0, std.math.nan(T), 0).normalizeChecked());
+    inline for (.{ std.math.floatMin(T), std.math.floatMax(T) }) |value| {
+        const unit = try P.vector(value, 0, 0).normalizeChecked();
+        try testing.expect(unit.eql(P.vector(1, 0, 0)));
+    }
+    try testing.expect((try P.vector(1, 2, 3).normalizeChecked()).eql(P.vector(1, 2, 3).normalize()));
+}
 
 const testing = std.testing;
 const V = Tup;
