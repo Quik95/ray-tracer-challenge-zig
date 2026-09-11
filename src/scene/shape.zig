@@ -87,6 +87,15 @@ pub fn Shape(comptime T: type) type {
             return init(.{ .plane = .{} });
         }
 
+        /// A sphere of glass: clear through, and bending light as glass
+        /// does. Scenes want a marble often enough to name one.
+        pub fn glassSphere() Self {
+            var self = sphere();
+            self.material.transparency = 1.0;
+            self.material.refractive_index = 1.5;
+            return self;
+        }
+
         pub fn setTransform(self: *Self, m: M) void {
             self.transform = m;
         }
@@ -262,4 +271,11 @@ test "shapes are intersected and shaded at comptime" {
         try testing.expect(xs.items()[0].t == 3);
         try testing.expect(s.normalAt(V.point(0, 2, 0)).?.eql(V.vector(0, 1, 0)));
     }
+}
+
+test "a glass sphere is clear and bends light" {
+    const s = Sh.glassSphere();
+    try testing.expect(s.transform.eql(Sh.M.identity));
+    try testing.expectEqual(@as(f64, 1.0), s.material.transparency);
+    try testing.expectEqual(@as(f64, 1.5), s.material.refractive_index);
 }

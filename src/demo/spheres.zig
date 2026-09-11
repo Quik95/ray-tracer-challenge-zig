@@ -1,7 +1,8 @@
 //! Three spheres resting on a floor, and the camera that looks at them.
 //!
 //! The room is two planes: one lying flat for the floor, one stood on edge
-//! behind the balls for the backdrop.
+//! behind the balls for the backdrop. The floor is faintly polished and one
+//! of the balls is glass, so part of the scene is made of the rest of it.
 
 const std = @import("std");
 const camera_mod = @import("../render/camera.zig");
@@ -27,9 +28,10 @@ pub fn Scene(comptime T: type) type {
 
         pub const object_count = 5;
 
-        /// The matte, barely reflective surface the room is made of.
+        /// The surface the room is made of: matte, and just polished enough
+        /// to catch a soft image of what stands on it.
         fn roomMaterial(p: Pattern) Object.Mat {
-            return .{ .color = C.init(1, 0.9, 0.9), .specular = 0, .pattern = p };
+            return .{ .color = C.init(1, 0.9, 0.9), .specular = 0, .reflective = 0.15, .pattern = p };
         }
 
         /// A tiled floor, and a wall of narrow vertical bands behind it.
@@ -70,16 +72,23 @@ pub fn Scene(comptime T: type) type {
                         },
                     },
                 },
+                // A marble of glass. Its own color is nearly black: what it
+                // shows is the room behind and around it, not itself, and a
+                // brighter surface would drown that out. Being mirrored as
+                // well as clear is what fills in the rim, where the light
+                // stops crossing the surface and is turned back instead.
                 .{
                     .id = 3,
                     .transform = Tf.chain().scale(0.5, 0.5, 0.5).translate(1.5, 0.5, -0.5).m,
                     .material = .{
-                        .diffuse = 0.7,
-                        .specular = 0.3,
-                        .pattern = .{
-                            .transform = Tf.chain().scale(0.5, 0.5, 0.5).rotateZ(std.math.pi / 4.0).m,
-                            .kind = .{ .gradient = .{ .a = C.init(0.5, 1, 0.1), .b = C.init(0.1, 0.3, 0.8) } },
-                        },
+                        .color = C.init(0.05, 0.05, 0.06),
+                        .ambient = 0.05,
+                        .diffuse = 0.1,
+                        .specular = 1,
+                        .shininess = 300,
+                        .reflective = 0.9,
+                        .transparency = 0.9,
+                        .refractive_index = 1.5,
                     },
                 },
                 .{
@@ -154,4 +163,18 @@ test "the floor is tiled, and the tiles alternate" {
     try testing.expect(floor.pattern != null);
     try testing.expect(!floor.colorAt(tuple.Tup.point(0.25, 0, 0.25))
         .eql(floor.colorAt(tuple.Tup.point(0.75, 0, 0.25))));
+}
+
+test "one of the balls is glass, and shows the room through it" {
+    const objects = Default.objects();
+    const glass = objects[3].material;
+    try testing.expect(glass.transparency > 0.5);
+    try testing.expect(glass.reflective > 0.5);
+    try testing.expect(glass.refractive_index > 1);
+
+    // A ray aimed at the glass ball comes back with more than the ball's own
+    // near-black surface on it.
+    const w = Default.world(&objects);
+    const r = @import("../scene/ray.zig").R.init(tuple.Tup.point(1.5, 0.5, -5), tuple.Tup.vector(0, 0, 1));
+    try testing.expect(!w.colorAt(r).eql(glass.color));
 }

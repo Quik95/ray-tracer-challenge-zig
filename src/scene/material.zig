@@ -35,6 +35,15 @@ pub fn Material(comptime T: type) type {
         /// How tightly that highlight is focused. Small values spread it over
         /// the surface; large ones pull it into a pinpoint.
         shininess: T = 200.0,
+        /// Share of what the surface mirrors back. Zero is a matte surface,
+        /// one a perfect mirror, and anything between a partial reflection.
+        reflective: T = 0.0,
+        /// Share of what shows through the surface from behind it. Zero is
+        /// opaque, one lets the scene behind show through entirely.
+        transparency: T = 0.0,
+        /// How strongly light bends on entering this material, relative to
+        /// a vacuum. One leaves it straight; glass is about 1.5.
+        refractive_index: T = 1.0,
 
         pub fn eql(a: Self, b: Self) bool {
             if ((a.pattern == null) != (b.pattern == null)) return false;
@@ -43,7 +52,10 @@ pub fn Material(comptime T: type) type {
                 tuple.feq(T, a.ambient, b.ambient) and
                 tuple.feq(T, a.diffuse, b.diffuse) and
                 tuple.feq(T, a.specular, b.specular) and
-                tuple.feq(T, a.shininess, b.shininess);
+                tuple.feq(T, a.shininess, b.shininess) and
+                tuple.feq(T, a.reflective, b.reflective) and
+                tuple.feq(T, a.transparency, b.transparency) and
+                tuple.feq(T, a.refractive_index, b.refractive_index);
         }
 
         /// The color the surface shows at a point given in the coordinates
@@ -121,6 +133,9 @@ test "the default material" {
     try testing.expectEqual(@as(f64, 0.9), m.diffuse);
     try testing.expectEqual(@as(f64, 0.9), m.specular);
     try testing.expectEqual(@as(f64, 200.0), m.shininess);
+    try testing.expectEqual(@as(f64, 0.0), m.reflective);
+    try testing.expectEqual(@as(f64, 0.0), m.transparency);
+    try testing.expectEqual(@as(f64, 1.0), m.refractive_index);
 }
 
 test "lighting with the eye between the light and the surface" {
