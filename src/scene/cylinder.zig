@@ -13,6 +13,7 @@
 //! including, that height.
 
 const std = @import("std");
+const bounds_mod = @import("bounds.zig");
 const intersection = @import("intersection.zig");
 const ray = @import("ray.zig");
 const tuple = @import("../math/tuple.zig");
@@ -53,6 +54,24 @@ pub fn Quadric(comptime T: type, comptime profile: Profile) type {
                 .cylinder => 1,
                 .cone => y * y,
             };
+        }
+
+        pub const Bounds = bounds_mod.Bounds(T);
+
+        /// As wide as the surface ever grows, and as tall as it was
+        /// truncated to. The cylinder holds one unit of radius throughout;
+        /// the cone widens with height, so the further of its two ends is
+        /// what says how wide it gets — and an end left at infinity leaves
+        /// the box infinite too.
+        pub fn bounds(self: Self) Bounds {
+            const radius = switch (profile) {
+                .cylinder => 1,
+                .cone => @max(@abs(self.minimum), @abs(self.maximum)),
+            };
+            return .init(
+                Point.point(-radius, self.minimum, -radius),
+                Point.point(radius, self.maximum, radius),
+            );
         }
 
         /// Where the ray crosses the surface, nearest first.

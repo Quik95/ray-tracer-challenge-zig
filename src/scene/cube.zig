@@ -5,6 +5,7 @@
 //! shape wearing the geometry is what applies it.
 
 const std = @import("std");
+const bounds_mod = @import("bounds.zig");
 const intersection = @import("intersection.zig");
 const ray = @import("ray.zig");
 const tuple = @import("../math/tuple.zig");
@@ -28,6 +29,13 @@ pub fn Cube(comptime T: type) type {
 
         inline fn axes(t: Point) Axes {
             return @shuffle(T, t.v, undefined, [3]i32{ 0, 1, 2 });
+        }
+
+        pub const Bounds = bounds_mod.Bounds(T);
+
+        /// The box is its own bounding box.
+        pub fn bounds(_: Self) Bounds {
+            return .centered(1, 1, 1);
         }
 
         /// Where the ray crosses the box.

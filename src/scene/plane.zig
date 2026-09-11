@@ -4,6 +4,7 @@
 //! A floor, a wall, or a ceiling is that plane under a transformation.
 
 const std = @import("std");
+const bounds_mod = @import("bounds.zig");
 const intersection = @import("intersection.zig");
 const ray = @import("ray.zig");
 const tuple = @import("../math/tuple.zig");
@@ -20,6 +21,15 @@ pub fn Plane(comptime T: type) type {
         /// A flat surface is crossed once or not at all.
         pub const max_hits = 1;
         pub const Roots = intersection.Roots(T, max_hits);
+
+        pub const Bounds = bounds_mod.Bounds(T);
+
+        /// The plane runs on forever in x and z, and has no thickness at all
+        /// in y.
+        pub fn bounds(_: Self) Bounds {
+            const far = std.math.inf(T);
+            return .init(Point.point(-far, 0, -far), Point.point(far, 0, far));
+        }
 
         /// Where the ray crosses the plane. A ray with no slope in y runs
         /// parallel to the surface and never meets it — including the ray

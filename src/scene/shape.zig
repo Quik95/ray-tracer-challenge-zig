@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const intersection = @import("intersection.zig");
+const bounds_mod = @import("bounds.zig");
 const cone_mod = @import("cone.zig");
 const cube_mod = @import("cube.zig");
 const cylinder_mod = @import("cylinder.zig");
@@ -33,6 +34,7 @@ pub fn Shape(comptime T: type) type {
         pub const Ray = ray_mod.Ray(T);
         pub const Hit = intersection.Intersection(T, Self);
         pub const Mat = material.Material(T);
+        pub const Bounds = bounds_mod.Bounds(T);
         pub const Scalar = T;
 
         /// The geometries the ray tracer knows how to meet.
@@ -112,11 +114,21 @@ pub fn Shape(comptime T: type) type {
         /// the group has no address of its own yet, so linking is a pass over
         /// a tree that already stands where it will stay. Moving a linked tree
         /// leaves the links behind; link it again where it lands.
+        ///
+        /// It is also where a group's bounding box is worked out, for the same
+        /// reason: the box is drawn around children that are already in place,
+        /// and around the boxes of the groups beneath them, which linking has
+        /// worked out first.
         pub fn link(self: *Self) void {
             switch (self.geometry) {
-                .group => |g| for (g.children) |*child| {
-                    child.parent = self;
-                    child.link();
+                .group => |*g| {
+                    var box: Bounds = .empty;
+                    for (g.children) |*child| {
+                        child.parent = self;
+                        child.link();
+                        box = box.merge(child.parentBounds());
+                    }
+                    g.box = box;
                 },
                 else => {},
             }
@@ -126,6 +138,19 @@ pub fn Shape(comptime T: type) type {
         /// trees are ready in one call.
         pub fn linkAll(shapes: []Self) void {
             for (shapes) |*s| s.link();
+        }
+
+        /// The box holding this shape, in its own coordinates.
+        pub fn bounds(self: *const Self) Bounds {
+            return switch (self.geometry) {
+                inline else => |geometry| geometry.bounds(),
+            };
+        }
+
+        /// The box holding this shape in the coordinates of whatever holds
+        /// it: the group it belongs to, or the world if none does.
+        pub fn parentBounds(self: *const Self) Bounds {
+            return self.bounds().transform(self.transform);
         }
 
         /// A sphere of glass: clear through, and bending light as glass
@@ -200,8 +225,11 @@ pub fn Shape(comptime T: type) type {
             // gathering happens inside the switch, where that count is known.
             switch (self.geometry) {
                 // A group has no surface of its own: the ray carries on into
-                // the group's coordinates and meets its children there.
+                // the group's coordinates and meets its children there —
+                // unless it misses the box drawn around them, in which case
+                // there is nothing below to meet either.
                 .group => |g| {
+                    if (!g.box.intersects(local)) return buf[0..0];
                     for (g.children) |*child| {
                         n += (try child.intersect(local, buf[n..])).len;
                     }
@@ -226,9 +254,12 @@ pub fn Shape(comptime T: type) type {
 
             var closest: ?Hit = null;
             switch (self.geometry) {
-                .group => |g| for (g.children) |*child| {
-                    const found = child.nearestHit(local) orelse continue;
-                    if (closest == null or found.t < closest.?.t) closest = found;
+                .group => |g| {
+                    if (!g.box.intersects(local)) return null;
+                    for (g.children) |*child| {
+                        const found = child.nearestHit(local) orelse continue;
+                        if (closest == null or found.t < closest.?.t) closest = found;
+                    }
                 },
                 inline else => |geometry| for (geometry.localIntersect(local).items()) |t| {
                     if (t < 0) continue;

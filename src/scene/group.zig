@@ -13,6 +13,7 @@
 //! must be called once the tree is standing where it will stay.
 
 const std = @import("std");
+const bounds_mod = @import("bounds.zig");
 const shape_mod = @import("shape.zig");
 
 /// A group of shapes, over a float type.
@@ -21,15 +22,30 @@ pub fn Group(comptime T: type) type {
         const Self = @This();
 
         pub const Child = shape_mod.Shape(T);
+        pub const Bounds = bounds_mod.Bounds(T);
 
         /// A group is met only through its children, never on its own, so it
         /// contributes no crossings of its own to the buffer they fill.
         pub const max_hits = 0;
 
         children: []Child = &.{},
+        /// A box holding every child, in this group's own coordinates. A ray
+        /// that misses the box misses everything inside it, so one test
+        /// stands in for the whole subtree.
+        ///
+        /// It is `Shape.link` that works the box out, since only a tree that
+        /// stands where it will stay has a shape to measure. Until then the
+        /// box holds everything, which rules nothing out and so is slow
+        /// rather than wrong.
+        box: Bounds = .everything,
 
         pub fn init(children: []Child) Self {
             return .{ .children = children };
+        }
+
+        /// The box holding the children, in this group's coordinates.
+        pub fn bounds(self: Self) Bounds {
+            return self.box;
         }
 
         pub fn isEmpty(self: Self) bool {
@@ -139,4 +155,49 @@ test "a group's own surface is nothing to shade" {
     var g = Sh.group(&children);
     g.link();
     try testing.expect(g.normalAt(V.point(0, 1, 0)) == null);
+}
+
+test "a group is boxed by its children, each where the group puts it" {
+    var children = [_]Sh{
+        .{ .transform = Tf.translation(2, 5, -3).mul(Tf.scaling(2, 2, 2)) },
+        .{
+            .geometry = .{ .cylinder = .{ .minimum = -2, .maximum = 2 } },
+            .transform = Tf.translation(-4, -1, 4).mul(Tf.scaling(0.5, 1, 0.5)),
+        },
+    };
+    var g = Sh.group(&children);
+    g.link();
+
+    const box = g.geometry.group.bounds();
+    try testing.expect(box.min.eql(V.point(-4.5, -3, -5)));
+    try testing.expect(box.max.eql(V.point(4, 7, 4.5)));
+}
+
+test "a group whose box a ray misses is left unopened" {
+    var children = [_]Sh{Sh.sphere()};
+    var g = Sh.group(&children);
+    g.setTransform(Tf.translation(0, 0, 20));
+    g.link();
+
+    // The box is drawn tightly round the one sphere, so a ray a good way to
+    // the side of it is turned away at the box rather than at the child.
+    try testing.expect(!g.geometry.group.bounds().intersects(
+        R.init(V.point(6, 0, -5), V.vector(0, 0, 1)),
+    ));
+    try testing.expect(g.nearestHit(R.init(V.point(6, 0, -5), V.vector(0, 0, 1))) == null);
+
+    var buf: [4]Sh.Hit = undefined;
+    const xs = try g.intersect(R.init(V.point(6, 0, -5), V.vector(0, 0, 1)), &buf);
+    try testing.expectEqual(@as(usize, 0), xs.len);
+    // Down the middle it still meets the sphere: the box rules out, never in.
+    try testing.expectEqual(@as(usize, 2), (try g.intersect(
+        R.init(V.point(0, 0, -5), V.vector(0, 0, 1)),
+        &buf,
+    )).len);
+}
+
+test "an unlinked group is boxed by everything, so nothing is ruled out" {
+    var children = [_]Sh{Sh.sphere()};
+    const g = Sh.group(&children);
+    try testing.expect(g.geometry.group.bounds().contains(V.point(1000, -1000, 0)));
 }

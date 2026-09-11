@@ -5,6 +5,7 @@
 //! wears it, which is also what carries a ray into these coordinates.
 
 const std = @import("std");
+const bounds_mod = @import("bounds.zig");
 const intersection = @import("intersection.zig");
 const ray = @import("ray.zig");
 const tuple = @import("../math/tuple.zig");
@@ -21,6 +22,13 @@ pub fn Sphere(comptime T: type) type {
         /// A ray can enter a sphere and leave it, and no more.
         pub const max_hits = 2;
         pub const Roots = intersection.Roots(T, max_hits);
+
+        pub const Bounds = bounds_mod.Bounds(T);
+
+        /// The unit sphere reaches one unit out along every axis.
+        pub fn bounds(_: Self) Bounds {
+            return .centered(1, 1, 1);
+        }
 
         /// Where the ray crosses the sphere, nearest first. A ray that grazes
         /// it reports the same point twice, so a caller counting crossings

@@ -14,6 +14,7 @@ pub const transform = @import("math/transform.zig");
 // What a ray meets, and what it meets it with.
 pub const ray = @import("scene/ray.zig");
 pub const intersection = @import("scene/intersection.zig");
+pub const bounds = @import("scene/bounds.zig");
 pub const sphere = @import("scene/sphere.zig");
 pub const plane = @import("scene/plane.zig");
 pub const cube = @import("scene/cube.zig");
@@ -147,6 +148,7 @@ const covered_sources = [_][]const u8{
     "math/transform.zig",
     "scene/ray.zig",
     "scene/intersection.zig",
+    "scene/bounds.zig",
     "scene/sphere.zig",
     "scene/plane.zig",
     "scene/cube.zig",
@@ -186,6 +188,7 @@ test {
     _ = clock;
     _ = ray;
     _ = intersection;
+    _ = bounds;
     _ = sphere;
     _ = plane;
     _ = cube;
