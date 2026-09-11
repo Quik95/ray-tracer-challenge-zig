@@ -83,8 +83,8 @@ pub fn Silhouette(comptime T: type) type {
             const ball = sphere();
             for (0..image.height) |y| {
                 for (0..image.width) |x| {
-                    const hits = ball.intersect(Frame.rayFor(image, x, y));
-                    if (Object.Hit.hit(hits.items()) != null) image.writePixel(x, y, ink);
+                    const hit = ball.nearestHit(Frame.rayFor(image, x, y));
+                    if (hit != null) image.writePixel(x, y, ink);
                 }
             }
         }
@@ -121,12 +121,11 @@ pub fn Shaded(comptime T: type) type {
             for (0..image.height) |y| {
                 for (0..image.width) |x| {
                     const r = Frame.rayFor(image, x, y);
-                    const hits = ball.intersect(r);
-                    const hit = Object.Hit.hit(hits.items()) orelse continue;
+                    const hit = ball.nearestHit(r) orelse continue;
 
                     const point = r.position(hit.t);
                     const normal = hit.object.normalAt(point) orelse continue;
-                    const object_point = hit.object.localPoint(point) orelse continue;
+                    const object_point = hit.object.worldToObject(point) orelse continue;
                     // Nothing else is in the scene, so nothing can shadow it.
                     const shade = hit.object.material.lighting(
                         lamp,

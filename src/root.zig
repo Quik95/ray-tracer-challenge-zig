@@ -18,6 +18,7 @@ pub const sphere = @import("scene/sphere.zig");
 pub const plane = @import("scene/plane.zig");
 pub const cube = @import("scene/cube.zig");
 pub const cylinder = @import("scene/cylinder.zig");
+pub const group = @import("scene/group.zig");
 pub const cone = @import("scene/cone.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
@@ -36,6 +37,7 @@ pub const clock = @import("demo/clock.zig");
 pub const spheres = @import("demo/spheres.zig");
 pub const cubes = @import("demo/cubes.zig");
 pub const cylinders = @import("demo/cylinders.zig");
+pub const hexagon = @import("demo/hexagon.zig");
 pub const room = @import("demo/room.zig");
 pub const planes = @import("demo/planes.zig");
 pub const patterns = @import("demo/patterns.zig");
@@ -149,6 +151,7 @@ const covered_sources = [_][]const u8{
     "scene/plane.zig",
     "scene/cube.zig",
     "scene/cylinder.zig",
+    "scene/group.zig",
     "scene/cone.zig",
     "scene/shape.zig",
     "scene/light.zig",
@@ -163,6 +166,7 @@ const covered_sources = [_][]const u8{
     "demo/spheres.zig",
     "demo/cubes.zig",
     "demo/cylinders.zig",
+    "demo/hexagon.zig",
     "demo/room.zig",
     "demo/planes.zig",
     "demo/patterns.zig",
@@ -186,6 +190,7 @@ test {
     _ = plane;
     _ = cube;
     _ = cylinder;
+    _ = group;
     _ = cone;
     _ = shape;
     _ = light;
@@ -196,6 +201,7 @@ test {
     _ = spheres;
     _ = cubes;
     _ = cylinders;
+    _ = hexagon;
     _ = room;
     _ = planes;
     _ = patterns;

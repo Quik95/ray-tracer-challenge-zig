@@ -44,18 +44,13 @@ pub fn World(comptime T: type) type {
         light: ?Light = null,
 
         /// Every crossing of `r` with every object, nearest first, written
-        /// into `buf`. Each object contributes at most `Object.max_hits`, so
-        /// a buffer of `Object.max_hits * objects.len` always suffices;
-        /// missing capacity returns an error.
+        /// into `buf`. A plain shape contributes at most `Object.max_hits`,
+        /// and a group as many as everything beneath it together; missing
+        /// capacity returns an error.
         pub fn intersect(self: Self, r: Ray, buf: []Hit) error{IntersectionOverflow}![]Hit {
             var n: usize = 0;
             for (self.objects) |*object| {
-                const xs = object.intersect(r);
-                for (xs.items()) |x| {
-                    if (n == buf.len) return error.IntersectionOverflow;
-                    buf[n] = x;
-                    n += 1;
-                }
+                n += (try object.intersect(r, buf[n..])).len;
             }
             const found = buf[0..n];
             Hit.sort(found);
@@ -68,11 +63,8 @@ pub fn World(comptime T: type) type {
         pub fn hit(self: Self, r: Ray) ?Hit {
             var closest: ?Hit = null;
             for (self.objects) |*object| {
-                const xs = object.intersect(r);
-                for (xs.items()) |x| {
-                    if (x.t < 0) continue;
-                    if (closest == null or x.t < closest.?.t) closest = x;
-                }
+                const found = object.nearestHit(r) orelse continue;
+                if (closest == null or found.t < closest.?.t) closest = found;
             }
             return closest;
         }
@@ -111,7 +103,7 @@ pub fn World(comptime T: type) type {
             // A pattern is written in the object's own coordinates, so the
             // lit point is handed over in both; a collapsed object has no
             // object space left to speak of and falls back to world space.
-            const object_point = comps.object.localPoint(comps.point) orelse comps.point;
+            const object_point = comps.object.worldToObject(comps.point) orelse comps.point;
             const surface = comps.object.material.lighting(
                 light,
                 comps.point,

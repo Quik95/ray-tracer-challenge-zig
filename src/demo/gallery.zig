@@ -16,6 +16,7 @@ const canvas = @import("../render/canvas.zig");
 const color = @import("../render/color.zig");
 
 const clock = @import("clock.zig");
+const hexagon = @import("hexagon.zig");
 const cubes = @import("cubes.zig");
 const cylinders = @import("cylinders.zig");
 const patterns = @import("patterns.zig");
@@ -63,6 +64,7 @@ pub fn Gallery(comptime T: type) type {
             spheres.Scene(T),
             cubes.Scene(T),
             cylinders.Scene(T),
+            hexagon.Scene(T),
         };
 
         pub const count = scenes.len;
@@ -98,7 +100,11 @@ pub fn Gallery(comptime T: type) type {
                     workers: usize,
                 ) RenderError!Image {
                     if (!@hasDecl(Scene, "draw")) {
-                        const objects = Scene.objects();
+                        // A scene of groups points its groups at children of its
+                        // own, which it can only do once the shapes are
+                        // standing where they will stay: here, and not in
+                        // the array it handed back.
+                        var objects = Scene.objects();
                         const world = Scene.world(&objects);
                         const camera = Scene.camera(width, height);
                         return camera.renderParallel(allocator, io, world, progress, workers);
@@ -137,7 +143,7 @@ const testing = std.testing;
 
 test "the gallery runs from the first drawing to the newest scene" {
     try testing.expectEqualStrings("projectile", Default.entries[0].name);
-    try testing.expectEqualStrings("cylinders", Default.latest.name);
+    try testing.expectEqualStrings("hexagon", Default.latest.name);
 
     // Names are what the command line matches on, so they must be distinct.
     for (Default.entries, 0..) |entry, i| {
@@ -151,7 +157,8 @@ test "scenes of a group share a directory, numbered in gallery order" {
     try testing.expectEqualStrings("1-canvas", Default.entries[0].dir);
     try testing.expectEqualStrings("1-canvas", Default.find("clock").?.dir);
     try testing.expectEqualStrings("2-rays", Default.find("silhouette").?.dir);
-    try testing.expectEqualStrings("4-shapes", Default.latest.dir);
+    try testing.expectEqualStrings("4-shapes", Default.find("cylinders").?.dir);
+    try testing.expectEqualStrings("5-groups", Default.latest.dir);
 
     // A group is one run of neighbouring scenes: once its directory has been
     // left behind, it is never returned to.

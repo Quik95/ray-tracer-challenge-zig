@@ -212,7 +212,7 @@ test "the camera stands inside the room" {
     const objects = Default.objects();
     const walls = objects[0];
     const eye = (Default.camera(10, 10).transform.inverse() catch unreachable).mulTuple(P.point(0, 0, 0));
-    const inside = walls.localPoint(eye).?;
+    const inside = walls.worldToObject(eye).?;
     inline for (.{ .x, .y, .z }) |axis| {
         try testing.expect(@abs(inside.get(axis)) < 1);
     }

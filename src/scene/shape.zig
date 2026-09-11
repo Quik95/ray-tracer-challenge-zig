@@ -15,6 +15,7 @@ const intersection = @import("intersection.zig");
 const cone_mod = @import("cone.zig");
 const cube_mod = @import("cube.zig");
 const cylinder_mod = @import("cylinder.zig");
+const group_mod = @import("group.zig");
 const material = @import("material.zig");
 const matrix = @import("../math/matrix.zig");
 const plane_mod = @import("plane.zig");
@@ -41,9 +42,13 @@ pub fn Shape(comptime T: type) type {
             cube: cube_mod.Cube(T),
             cylinder: cylinder_mod.Cylinder(T),
             cone: cone_mod.Cone(T),
+            group: group_mod.Group(T),
         };
 
-        /// The most crossings any of them can report.
+        /// The most crossings any one surface among them can report. A group
+        /// reports none of its own: it is met only through its children, and
+        /// how many of those there are is the scene's business rather than the
+        /// geometry's.
         pub const max_hits = blk: {
             var most: usize = 0;
             for (@typeInfo(Geometry).@"union".fields) |field| {
@@ -52,20 +57,14 @@ pub fn Shape(comptime T: type) type {
             break :blk most;
         };
 
-        /// Where a ray meets this shape, nearest first.
-        pub const Hits = struct {
-            buf: [max_hits]Hit = undefined,
-            len: usize = 0,
-
-            pub const none: Hits = .{};
-
-            pub fn items(self: *const Hits) []const Hit {
-                return self.buf[0..self.len];
-            }
-        };
+        pub const IntersectError = error{IntersectionOverflow};
 
         /// An optional output label; intersections identify their object by pointer.
         id: usize = 0,
+        /// The group this shape belongs to, if any. It is what carries points
+        /// the rest of the way into this shape's coordinates, and normals the
+        /// rest of the way back out to the world.
+        parent: ?*const Self = null,
         /// Object space to world space. The identity leaves the geometry
         /// exactly where it is written.
         transform: M = M.identity,
@@ -100,6 +99,35 @@ pub fn Shape(comptime T: type) type {
             return init(.{ .cone = .{} });
         }
 
+        /// A group over `children`, which the caller owns and keeps alive for
+        /// as long as the group is. The children learn which group holds them
+        /// only once `link` is called.
+        pub fn group(children: []Self) Self {
+            return init(.{ .group = group_mod.Group(T).init(children) });
+        }
+
+        /// Tell every shape below this one which group it belongs to.
+        ///
+        /// A child cannot be handed its parent when the group is built, since
+        /// the group has no address of its own yet, so linking is a pass over
+        /// a tree that already stands where it will stay. Moving a linked tree
+        /// leaves the links behind; link it again where it lands.
+        pub fn link(self: *Self) void {
+            switch (self.geometry) {
+                .group => |g| for (g.children) |*child| {
+                    child.parent = self;
+                    child.link();
+                },
+                else => {},
+            }
+        }
+
+        /// Link a whole scene at once, so shapes built as a plain array of
+        /// trees are ready in one call.
+        pub fn linkAll(shapes: []Self) void {
+            for (shapes) |*s| s.link();
+        }
+
         /// A sphere of glass: clear through, and bending light as glass
         /// does. Scenes want a marble often enough to name one.
         pub fn glassSphere() Self {
@@ -117,11 +145,37 @@ pub fn Shape(comptime T: type) type {
             self.material = m;
         }
 
-        /// A world-space point in this shape's own coordinates, or null if
-        /// the transformation has no inverse to carry the point back along.
-        pub fn localPoint(self: *const Self, world_point: Point) ?Point {
+        /// A world-space point in this shape's own coordinates, or null if a
+        /// transformation on the way in has no inverse to carry it back along.
+        ///
+        /// The way in runs through every group the shape belongs to: each of
+        /// them stands the shape somewhere, and the point has to come through
+        /// all of them before this shape's own transformation applies.
+        pub fn worldToObject(self: *const Self, world_point: Point) ?Point {
+            var point = world_point;
+            if (self.parent) |parent| {
+                point = parent.worldToObject(point) orelse return null;
+            }
             const inv = self.transform.inverse() catch return null;
-            return inv.mulTuple(world_point);
+            return inv.mulTuple(point);
+        }
+
+        /// A normal written in this shape's own coordinates, carried out to
+        /// world space through every group the shape belongs to.
+        ///
+        /// Each step takes the inverse *transpose*: multiplying by the
+        /// transform alone would tilt the normal off the surface wherever the
+        /// shape is scaled unevenly.
+        pub fn normalToWorld(self: *const Self, normal: Point) ?Point {
+            const inv = self.transform.inverse() catch return null;
+            var out = inv.transpose().mulTuple(normal);
+            // A translation in the transform leaks into w through the
+            // transpose; clearing it keeps the result a vector.
+            out.v[@intFromEnum(tuple.Axis.w)] = 0;
+            out = out.normalizeChecked() catch return null;
+
+            if (self.parent) |parent| return parent.normalToWorld(out);
+            return out;
         }
 
         /// A world-space ray in this shape's own coordinates, or null if the
@@ -132,40 +186,68 @@ pub fn Shape(comptime T: type) type {
             return world_ray.transform(inv);
         }
 
-        /// Where `world_ray` crosses this shape.
-        pub fn intersect(self: *const Self, world_ray: Ray) Hits {
-            const local = self.localRay(world_ray) orelse return .none;
+        /// Where `world_ray` crosses this shape, written into `buf` and
+        /// returned as the part of it that was filled.
+        ///
+        /// A surface reports at most `max_hits` crossings, but a group reports
+        /// as many as everything beneath it together, so the room for them
+        /// comes from the caller rather than from the geometry.
+        pub fn intersect(self: *const Self, world_ray: Ray, buf: []Hit) IntersectError![]Hit {
+            const local = self.localRay(world_ray) orelse return buf[0..0];
 
-            var hits: Hits = .{};
+            var n: usize = 0;
             // Each geometry reports its own number of crossings, so the
             // gathering happens inside the switch, where that count is known.
             switch (self.geometry) {
-                inline else => |g| for (g.localIntersect(local).items()) |t| {
-                    hits.buf[hits.len] = Hit.init(t, self);
-                    hits.len += 1;
+                // A group has no surface of its own: the ray carries on into
+                // the group's coordinates and meets its children there.
+                .group => |g| {
+                    for (g.children) |*child| {
+                        n += (try child.intersect(local, buf[n..])).len;
+                    }
+                    const found = buf[0..n];
+                    Hit.sort(found);
+                    return found;
+                },
+                inline else => |geometry| for (geometry.localIntersect(local).items()) |t| {
+                    if (n == buf.len) return error.IntersectionOverflow;
+                    buf[n] = Hit.init(t, self);
+                    n += 1;
                 },
             }
-            return hits;
+            return buf[0..n];
         }
 
-        /// The unit vector perpendicular to the surface at a world-space
-        /// point on it, or null if the shape has been collapsed to nothing.
-        ///
-        /// Carrying the geometry's own normal back to world space takes the
-        /// inverse *transpose*: multiplying by the transform alone would tilt
-        /// the normal off the surface wherever the shape is scaled unevenly.
-        pub fn normalAt(self: *const Self, world_point: Point) ?Point {
-            const inv = self.transform.inverse() catch return null;
-            const local_point = inv.mulTuple(world_point);
-            const local_normal = switch (self.geometry) {
-                inline else => |g| g.localNormalAt(local_point),
-            };
+        /// The nearest crossing of `world_ray` ahead of its origin, found
+        /// without collecting the rest — and so without a buffer to collect
+        /// them into.
+        pub fn nearestHit(self: *const Self, world_ray: Ray) ?Hit {
+            const local = self.localRay(world_ray) orelse return null;
 
-            var world_normal = inv.transpose().mulTuple(local_normal);
-            // A translation in the transform leaks into w through the
-            // transpose; clearing it keeps the result a vector.
-            world_normal.v[@intFromEnum(tuple.Axis.w)] = 0;
-            return world_normal.normalize();
+            var closest: ?Hit = null;
+            switch (self.geometry) {
+                .group => |g| for (g.children) |*child| {
+                    const found = child.nearestHit(local) orelse continue;
+                    if (closest == null or found.t < closest.?.t) closest = found;
+                },
+                inline else => |geometry| for (geometry.localIntersect(local).items()) |t| {
+                    if (t < 0) continue;
+                    if (closest == null or t < closest.?.t) closest = Hit.init(t, self);
+                },
+            }
+            return closest;
+        }
+
+        /// The unit vector perpendicular to the surface at a world-space point
+        /// on it, or null where there is no surface: a group, which is
+        /// abstract, or a shape collapsed to nothing.
+        pub fn normalAt(self: *const Self, world_point: Point) ?Point {
+            const local_point = self.worldToObject(world_point) orelse return null;
+            const local_normal = switch (self.geometry) {
+                .group => return null,
+                inline else => |geometry| geometry.localNormalAt(local_point),
+            };
+            return self.normalToWorld(local_normal);
         }
     };
 }
@@ -203,11 +285,13 @@ test "shape copies retain labels but intersections identify objects by pointer" 
     var b = a;
     try testing.expectEqual(a.id, b.id);
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
-    const ax = a.intersect(r);
-    const bx = b.intersect(r);
-    try testing.expectEqual(&a, ax.items()[0].object);
-    try testing.expectEqual(&b, bx.items()[0].object);
-    try testing.expect(ax.items()[0].object != bx.items()[0].object);
+    var buf_ax: [8]Sh.Hit = undefined;
+    const ax = try a.intersect(r, &buf_ax);
+    var buf_bx: [8]Sh.Hit = undefined;
+    const bx = try b.intersect(r, &buf_bx);
+    try testing.expectEqual(&a, ax[0].object);
+    try testing.expectEqual(&b, bx[0].object);
+    try testing.expect(ax[0].object != bx[0].object);
 }
 
 test "shape constructors work at comptime with default labels" {
@@ -254,32 +338,36 @@ test "the normal on a scaled and rotated shape" {
 test "intersecting a scaled sphere" {
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
     const s: Sh = .{ .transform = Tf.scaling(2, 2, 2) };
-    const xs = s.intersect(r);
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(r, &buf);
     try testing.expectEqual(@as(usize, 2), xs.len);
-    try testing.expectEqual(@as(f64, 3), xs.items()[0].t);
-    try testing.expectEqual(@as(f64, 7), xs.items()[1].t);
+    try testing.expectEqual(@as(f64, 3), xs[0].t);
+    try testing.expectEqual(@as(f64, 7), xs[1].t);
 }
 
 test "intersecting a translated sphere" {
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
     const s: Sh = .{ .transform = Tf.translation(5, 0, 0) };
-    try testing.expectEqual(@as(usize, 0), s.intersect(r).len);
+    var buf: [8]Sh.Hit = undefined;
+    try testing.expectEqual(@as(usize, 0), (try s.intersect(r, &buf)).len);
 }
 
 test "intersect sets the object on the intersection" {
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
     const s = Sh.sphere();
-    const xs = s.intersect(r);
-    try testing.expectEqual(&s, xs.items()[0].object);
-    try testing.expectEqual(&s, xs.items()[1].object);
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(r, &buf);
+    try testing.expectEqual(&s, xs[0].object);
+    try testing.expectEqual(&s, xs[1].object);
 }
 
 test "a translated plane is met where it now lies" {
     const s: Sh = .{ .geometry = .{ .plane = .{} }, .transform = Tf.translation(0, -1, 0) };
     const r = R.init(V.point(0, 1, 0), V.vector(0, -1, 0));
-    const xs = s.intersect(r);
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(r, &buf);
     try testing.expectEqual(@as(usize, 1), xs.len);
-    try testing.expectEqual(@as(f64, 2), xs.items()[0].t);
+    try testing.expectEqual(@as(f64, 2), xs[0].t);
     try testing.expect(s.normalAt(V.point(5, -1, 5)).?.eql(V.vector(0, 1, 0)));
 }
 
@@ -287,7 +375,8 @@ test "a collapsed shape can be neither intersected nor asked for a normal" {
     // A zero scale has no inverse: there is nothing left to meet.
     const s: Sh = .{ .transform = Tf.scaling(0, 0, 0) };
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
-    try testing.expectEqual(@as(usize, 0), s.intersect(r).len);
+    var buf: [8]Sh.Hit = undefined;
+    try testing.expectEqual(@as(usize, 0), (try s.intersect(r, &buf)).len);
     try testing.expect(s.normalAt(V.point(1, 0, 0)) == null);
 }
 
@@ -296,8 +385,9 @@ test "shapes are intersected and shaded at comptime" {
         @setEvalBranchQuota(20_000);
         const s: Sh = .{ .transform = Tf.scaling(2, 2, 2) };
         const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
-        const xs = s.intersect(r);
-        try testing.expect(xs.items()[0].t == 3);
+        var buf: [8]Sh.Hit = undefined;
+        const xs = try s.intersect(r, &buf);
+        try testing.expect(xs[0].t == 3);
         try testing.expect(s.normalAt(V.point(0, 2, 0)).?.eql(V.vector(0, 1, 0)));
     }
 }
@@ -315,10 +405,11 @@ test "a transformed cube is met where it now stands" {
         .geometry = .{ .cube = .{} },
         .transform = Tf.chain().scale(2, 1, 1).translate(4, 0, 0).m,
     };
-    const xs = s.intersect(R.init(V.point(-5, 0, 0), V.vector(1, 0, 0)));
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(R.init(V.point(-5, 0, 0), V.vector(1, 0, 0)), &buf);
     try testing.expectEqual(@as(usize, 2), xs.len);
-    try testing.expectEqual(@as(f64, 7), xs.items()[0].t);
-    try testing.expectEqual(@as(f64, 11), xs.items()[1].t);
+    try testing.expectEqual(@as(f64, 7), xs[0].t);
+    try testing.expectEqual(@as(f64, 11), xs[1].t);
     try testing.expect(s.normalAt(V.point(2, 0, 0)).?.eql(V.vector(-1, 0, 0)));
 }
 
@@ -329,10 +420,69 @@ test "a transformed cylinder is met where it now stands" {
         .transform = Tf.chain().rotateZ(std.math.pi / 2.0).translate(3, 0, 0).m,
     };
     s.id = 1;
-    const xs = s.intersect(R.init(V.point(0, 0, 0), V.vector(1, 0, 0)));
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(R.init(V.point(0, 0, 0), V.vector(1, 0, 0)), &buf);
     try testing.expectEqual(@as(usize, 2), xs.len);
-    try testing.expectApproxEqAbs(@as(f64, 2), xs.items()[0].t, 1e-9);
-    try testing.expectApproxEqAbs(@as(f64, 4), xs.items()[1].t, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 2), xs[0].t, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 4), xs[1].t, 1e-9);
     // The cap faces back down the x axis, towards where the ray came from.
     try testing.expect(s.normalAt(V.point(2, 0, 0)).?.eql(V.vector(-1, 0, 0)));
+}
+
+test "a point comes into a nested shape's coordinates through its groups" {
+    var inner = [_]Sh{.{ .transform = Tf.translation(5, 0, 0) }};
+    var middle = [_]Sh{Sh.group(&inner)};
+    middle[0].setTransform(Tf.scaling(2, 2, 2));
+    var outer = Sh.group(&middle);
+    outer.setTransform(Tf.rotationY(std.math.pi / 2.0));
+    outer.link();
+
+    const p = inner[0].worldToObject(V.point(-2, 0, -10)).?;
+    try testing.expect(p.eql(V.point(0, 0, -1)));
+}
+
+test "a normal goes out of a nested shape's coordinates through its groups" {
+    var inner = [_]Sh{.{ .transform = Tf.translation(5, 0, 0) }};
+    var middle = [_]Sh{Sh.group(&inner)};
+    middle[0].setTransform(Tf.scaling(1, 2, 3));
+    var outer = Sh.group(&middle);
+    outer.setTransform(Tf.rotationY(std.math.pi / 2.0));
+    outer.link();
+
+    const third = @sqrt(3.0) / 3.0;
+    const n = inner[0].normalToWorld(V.vector(third, third, third)).?;
+    try expectVector(V.vector(0.2857, 0.4286, -0.8571), n);
+}
+
+test "the normal on a shape inside a group" {
+    var inner = [_]Sh{.{ .transform = Tf.translation(5, 0, 0) }};
+    var middle = [_]Sh{Sh.group(&inner)};
+    middle[0].setTransform(Tf.scaling(1, 2, 3));
+    var outer = Sh.group(&middle);
+    outer.setTransform(Tf.rotationY(std.math.pi / 2.0));
+    outer.link();
+
+    const n = inner[0].normalAt(V.point(1.7321, 1.1547, -5.5774)).?;
+    try expectVector(V.vector(0.2857, 0.4286, -0.8571), n);
+}
+
+test "linking a scene reaches every group in it" {
+    var leaves = [_]Sh{ Sh.sphere(), Sh.cube() };
+    var branch = [_]Sh{Sh.group(leaves[0..1])};
+    var scene = [_]Sh{ Sh.group(&branch), Sh.plane() };
+    Sh.linkAll(&scene);
+
+    try testing.expectEqual(&scene[0], branch[0].parent);
+    try testing.expectEqual(&branch[0], leaves[0].parent);
+    // Nothing holds the plane or the cube, so neither gained a parent.
+    try testing.expect(scene[1].parent == null);
+    try testing.expect(leaves[1].parent == null);
+}
+
+/// Compare two tuples to the four decimals the book's expected values carry,
+/// which is coarser than the tracer's own tolerance.
+fn expectVector(expected: V, actual: V) !void {
+    inline for (0..4) |i| {
+        try testing.expectApproxEqAbs(expected.v[i], actual.v[i], 1e-4);
+    }
 }
