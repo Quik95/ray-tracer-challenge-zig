@@ -17,6 +17,8 @@ pub const intersection = @import("scene/intersection.zig");
 pub const sphere = @import("scene/sphere.zig");
 pub const plane = @import("scene/plane.zig");
 pub const cube = @import("scene/cube.zig");
+pub const cylinder = @import("scene/cylinder.zig");
+pub const cone = @import("scene/cone.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
@@ -33,6 +35,7 @@ pub const projectile = @import("demo/projectile.zig");
 pub const clock = @import("demo/clock.zig");
 pub const spheres = @import("demo/spheres.zig");
 pub const cubes = @import("demo/cubes.zig");
+pub const cylinders = @import("demo/cylinders.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -82,6 +85,16 @@ pub const Cube = cube.Cube;
 /// The cube geometry at the precision the ray tracer uses.
 pub const Cb = cube.C;
 
+/// Generic unit-radius cylinder geometry, parameterized by float type.
+pub const Cylinder = cylinder.Cylinder;
+/// The cylinder geometry at the precision the ray tracer uses.
+pub const Cyl = cylinder.Cyl;
+
+/// Generic double-napped cone geometry, parameterized by float type.
+pub const Cone = cone.Cone;
+/// The cone geometry at the precision the ray tracer uses.
+pub const Cn = cone.Cn;
+
 /// Generic shape: a geometry placed in the world, and its material.
 pub const Shape = shape.Shape;
 /// The shape at the precision the ray tracer uses.
@@ -130,6 +143,8 @@ const covered_sources = [_][]const u8{
     "scene/sphere.zig",
     "scene/plane.zig",
     "scene/cube.zig",
+    "scene/cylinder.zig",
+    "scene/cone.zig",
     "scene/shape.zig",
     "scene/light.zig",
     "scene/material.zig",
@@ -142,6 +157,7 @@ const covered_sources = [_][]const u8{
     "demo/clock.zig",
     "demo/spheres.zig",
     "demo/cubes.zig",
+    "demo/cylinders.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };
@@ -159,6 +175,8 @@ test {
     _ = sphere;
     _ = plane;
     _ = cube;
+    _ = cylinder;
+    _ = cone;
     _ = shape;
     _ = light;
     _ = material;
@@ -167,6 +185,7 @@ test {
     _ = camera;
     _ = spheres;
     _ = cubes;
+    _ = cylinders;
 }
 
 test "every file in src/ is imported here" {

@@ -27,6 +27,25 @@ pub fn Roots(comptime T: type, comptime capacity: usize) type {
             return self;
         }
 
+        /// Keep another root. A geometry only ever pushes as many as its own
+        /// `max_hits`, which is what sizes the buffer.
+        pub fn push(self: *Self, t: T) void {
+            self.ts[self.len] = t;
+            self.len += 1;
+        }
+
+        /// Put the roots in the order the ray meets them. There are only
+        /// ever a handful, so insertion beats anything cleverer.
+        pub fn sort(self: *Self) void {
+            if (self.len < 2) return;
+            for (1..self.len) |i| {
+                const t = self.ts[i];
+                var j = i;
+                while (j > 0 and self.ts[j - 1] > t) : (j -= 1) self.ts[j] = self.ts[j - 1];
+                self.ts[j] = t;
+            }
+        }
+
         pub fn items(self: *const Self) []const T {
             return self.ts[0..self.len];
         }

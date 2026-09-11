@@ -35,16 +35,18 @@ pub fn World(comptime T: type) type {
         /// How many crossings of a single ray the shader works from. Every
         /// one is wanted, since which materials meet at the hit depends on
         /// the objects around it, but the buffer lives on the stack of a
-        /// recursive call and so is bounded.
-        pub const max_intersections = 64;
+        /// recursive call and so is bounded — at enough room for a scene of
+        /// a reasonable size to have every object report its `max_hits`.
+        pub const max_intersections = 128;
 
         objects: []const Object = &.{},
         /// A world with no light shows nothing; every surface comes out black.
         light: ?Light = null,
 
         /// Every crossing of `r` with every object, nearest first, written
-        /// into `buf`. Each object contributes at most two, so a buffer of
-        /// `2 * objects.len` always suffices; missing capacity returns an error.
+        /// into `buf`. Each object contributes at most `Object.max_hits`, so
+        /// a buffer of `Object.max_hits * objects.len` always suffices;
+        /// missing capacity returns an error.
         pub fn intersect(self: Self, r: Ray, buf: []Hit) error{IntersectionOverflow}![]Hit {
             var n: usize = 0;
             for (self.objects) |*object| {
@@ -227,7 +229,8 @@ test "intersection capacity is checked only when another crossing arrives" {
 }
 
 test "tracing propagates intersection and nested media overflow" {
-    var objects: [33]Sh = @splat(Sh.glassSphere());
+    // One more crossing than the tracer's buffer holds: two per sphere.
+    var objects: [W.max_intersections / 2 + 1]Sh = @splat(Sh.glassSphere());
     for (&objects, 0..) |*object, i| {
         const radius: f64 = @floatFromInt(i + 1);
         object.setTransform(Tf.scaling(radius, radius, radius));

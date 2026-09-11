@@ -12,7 +12,9 @@
 
 const std = @import("std");
 const intersection = @import("intersection.zig");
+const cone_mod = @import("cone.zig");
 const cube_mod = @import("cube.zig");
+const cylinder_mod = @import("cylinder.zig");
 const material = @import("material.zig");
 const matrix = @import("../math/matrix.zig");
 const plane_mod = @import("plane.zig");
@@ -37,6 +39,8 @@ pub fn Shape(comptime T: type) type {
             sphere: sphere_mod.Sphere(T),
             plane: plane_mod.Plane(T),
             cube: cube_mod.Cube(T),
+            cylinder: cylinder_mod.Cylinder(T),
+            cone: cone_mod.Cone(T),
         };
 
         /// The most crossings any of them can report.
@@ -86,6 +90,14 @@ pub fn Shape(comptime T: type) type {
 
         pub fn cube() Self {
             return init(.{ .cube = .{} });
+        }
+
+        pub fn cylinder() Self {
+            return init(.{ .cylinder = .{} });
+        }
+
+        pub fn cone() Self {
+            return init(.{ .cone = .{} });
         }
 
         /// A sphere of glass: clear through, and bending light as glass
@@ -200,7 +212,7 @@ test "shape copies retain labels but intersections identify objects by pointer" 
 
 test "shape constructors work at comptime with default labels" {
     comptime {
-        for (.{ Sh.sphere(), Sh.plane(), Sh.cube(), Sh.glassSphere() }) |s| {
+        for (.{ Sh.sphere(), Sh.plane(), Sh.cube(), Sh.cylinder(), Sh.cone(), Sh.glassSphere() }) |s| {
             try testing.expectEqual(@as(usize, 0), s.id);
         }
     }
@@ -307,5 +319,20 @@ test "a transformed cube is met where it now stands" {
     try testing.expectEqual(@as(usize, 2), xs.len);
     try testing.expectEqual(@as(f64, 7), xs.items()[0].t);
     try testing.expectEqual(@as(f64, 11), xs.items()[1].t);
+    try testing.expect(s.normalAt(V.point(2, 0, 0)).?.eql(V.vector(-1, 0, 0)));
+}
+
+test "a transformed cylinder is met where it now stands" {
+    // A capped length of pipe, laid along the x axis and pushed aside.
+    var s: Sh = .{
+        .geometry = .{ .cylinder = .{ .minimum = -1, .maximum = 1, .closed = true } },
+        .transform = Tf.chain().rotateZ(std.math.pi / 2.0).translate(3, 0, 0).m,
+    };
+    s.id = 1;
+    const xs = s.intersect(R.init(V.point(0, 0, 0), V.vector(1, 0, 0)));
+    try testing.expectEqual(@as(usize, 2), xs.len);
+    try testing.expectApproxEqAbs(@as(f64, 2), xs.items()[0].t, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 4), xs.items()[1].t, 1e-9);
+    // The cap faces back down the x axis, towards where the ray came from.
     try testing.expect(s.normalAt(V.point(2, 0, 0)).?.eql(V.vector(-1, 0, 0)));
 }

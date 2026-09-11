@@ -1,4 +1,4 @@
-//! Renders a room furnished with cubes, one ray per pixel.
+//! Renders a colonnade of cylinders and cones, one ray per pixel.
 //!
 //! The image size comes from the command line: `SIZE` for a square, or
 //! `WIDTHxHEIGHT` (equivalently `WIDTH HEIGHT`) for anything else.
@@ -12,7 +12,7 @@ const std = @import("std");
 const Io = std.Io;
 
 const rt = @import("ray_tracing_challange_zig");
-const Scene = rt.cubes.Default;
+const Scene = rt.cylinders.Default;
 
 const file_name = Scene.name ++ ".ppm";
 
