@@ -42,17 +42,23 @@ pub fn Material(comptime T: type) type {
 
         /// The color of this material at `point`, lit by `light` and seen
         /// along `eye`, where the surface faces `normal`. All three vectors
-        /// are expected to be normalized.
+        /// are expected to be normalized. A point `in_shadow` sees none of
+        /// the light directly, so only the ambient term reaches it.
         pub fn lighting(
             self: Self,
             light: Light,
             point: Point,
             eye: Point,
             normal: Point,
+            in_shadow: bool,
         ) C {
             // A surface can only reflect what the light actually emits.
             const effective = self.color.hadamard(light.intensity);
             const ambient = effective.mul(self.ambient);
+
+            // Both remaining terms are answers to the light itself; where it
+            // is blocked, neither has anything to answer.
+            if (in_shadow) return ambient;
 
             const light_dir = light.position.sub(point).normalize();
 
@@ -104,7 +110,7 @@ test "lighting with the eye between the light and the surface" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
-    try testing.expect(m.lighting(light, position, eye, normal).eql(Col.init(1.9, 1.9, 1.9)));
+    try testing.expect(m.lighting(light, position, eye, normal, false).eql(Col.init(1.9, 1.9, 1.9)));
 }
 
 test "lighting with the eye offset 45 degrees loses the highlight" {
@@ -113,7 +119,7 @@ test "lighting with the eye offset 45 degrees loses the highlight" {
     const eye = V.vector(0, half_root_two, -half_root_two);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
-    try testing.expect(m.lighting(light, position, eye, normal).eql(Col.init(1.0, 1.0, 1.0)));
+    try testing.expect(m.lighting(light, position, eye, normal, false).eql(Col.init(1.0, 1.0, 1.0)));
 }
 
 test "lighting with the light offset 45 degrees dims the diffuse term" {
@@ -122,7 +128,7 @@ test "lighting with the light offset 45 degrees dims the diffuse term" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 10, -10), Col.white);
-    const result = m.lighting(light, position, eye, normal);
+    const result = m.lighting(light, position, eye, normal, false);
     try testing.expect(result.eql(Col.init(0.7364, 0.7364, 0.7364)));
 }
 
@@ -132,7 +138,7 @@ test "lighting with the eye in the path of the reflection" {
     const eye = V.vector(0, -half_root_two, -half_root_two);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 10, -10), Col.white);
-    const result = m.lighting(light, position, eye, normal);
+    const result = m.lighting(light, position, eye, normal, false);
     try testing.expect(result.eql(Col.init(1.6364, 1.6364, 1.6364)));
 }
 
@@ -142,14 +148,23 @@ test "lighting with the light behind the surface leaves only ambient" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, 10), Col.white);
-    try testing.expect(m.lighting(light, position, eye, normal).eql(Col.init(0.1, 0.1, 0.1)));
+    try testing.expect(m.lighting(light, position, eye, normal, false).eql(Col.init(0.1, 0.1, 0.1)));
 }
 
 test "the light's color tints what the surface reflects" {
     const m: Mat = .{ .color = Col.init(1, 1, 1) };
     const light = L.init(V.point(0, 0, -10), Col.init(1, 0, 0));
-    const result = m.lighting(light, V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1));
+    const result = m.lighting(light, V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), false);
     try testing.expect(result.eql(Col.init(1.9, 0, 0)));
+}
+
+test "lighting a surface in shadow leaves only ambient" {
+    const m: Mat = .{};
+    const position = V.point(0, 0, 0);
+    const eye = V.vector(0, 0, -1);
+    const normal = V.vector(0, 0, -1);
+    const light = L.init(V.point(0, 0, -10), Col.white);
+    try testing.expect(m.lighting(light, position, eye, normal, true).eql(Col.init(0.1, 0.1, 0.1)));
 }
 
 test "materials shade at comptime" {
@@ -157,7 +172,7 @@ test "materials shade at comptime" {
         @setEvalBranchQuota(20_000);
         const m: Mat = .{};
         const light = L.init(V.point(0, 0, -10), Col.white);
-        const result = m.lighting(light, V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1));
+        const result = m.lighting(light, V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), false);
         try testing.expect(result.eql(Col.init(1.9, 1.9, 1.9)));
     }
 }

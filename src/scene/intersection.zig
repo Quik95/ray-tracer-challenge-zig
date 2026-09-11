@@ -45,6 +45,11 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
             object: *const Object,
             /// Where the crossing is, in world space.
             point: Object.Point,
+            /// The same place, nudged clear of the surface along the normal.
+            /// Rays cast from the surface start here, so that rounding in
+            /// `point` cannot drop them below it and make the object block
+            /// itself.
+            over_point: Object.Point,
             /// From the surface back towards the eye.
             eye: Object.Point,
             /// The surface normal there, always facing the eye.
@@ -65,12 +70,14 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
             const normal = self.object.normalAt(point) orelse return null;
 
             const inside = normal.dot(eye) < 0;
+            const facing = if (inside) normal.neg() else normal;
             return .{
                 .t = self.t,
                 .object = self.object,
                 .point = point,
+                .over_point = point.add(facing.mul(Object.Point.epsilon)),
                 .eye = eye,
-                .normal = if (inside) normal.neg() else normal,
+                .normal = facing,
                 .inside = inside,
             };
         }
@@ -92,6 +99,9 @@ const testing = std.testing;
 const sphere = @import("sphere.zig");
 const S = sphere.S;
 const X = S.Hit;
+const R = @import("ray.zig").R;
+const Tf = @import("../math/transform.zig").Tf;
+const V = @import("../math/tuple.zig").Tup;
 
 test "an intersection encapsulates t and object" {
     const s = S.init();
@@ -144,4 +154,13 @@ test "sorting orders intersections nearest first" {
     try testing.expectEqual(@as(f64, -3), xs[0].t);
     try testing.expectEqual(@as(f64, 2), xs[1].t);
     try testing.expectEqual(@as(f64, 5), xs[2].t);
+}
+
+test "the hit lifts the point clear of the surface" {
+    const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
+    const shape: S = .{ .transform = Tf.translation(0, 0, 1) };
+    const comps = X.init(5, &shape).prepare(r).?;
+
+    try testing.expect(comps.over_point.z() < -V.epsilon / 2);
+    try testing.expect(comps.point.z() > comps.over_point.z());
 }

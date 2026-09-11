@@ -61,14 +61,30 @@ pub fn World(comptime T: type) type {
             return closest;
         }
 
+        /// Whether something stands between `point` and the light. A world
+        /// with no light shadows nothing: there is no light to block.
+        pub fn isShadowed(self: Self, point: Object.Point) bool {
+            const light = self.light orelse return false;
+
+            const to_light = light.position.sub(point);
+            const distance = to_light.magnitude();
+            const r = Ray.init(point, to_light.normalize());
+
+            // Only what lies short of the light itself casts a shadow here;
+            // anything beyond it is behind the point's light source.
+            const blocker = self.hit(r) orelse return false;
+            return blocker.t < distance;
+        }
+
         /// Shade a prepared crossing with this world's light.
         pub fn shadeHit(self: Self, comps: Comps) C {
             const light = self.light orelse return C.black;
             return comps.object.material.lighting(
                 light,
-                comps.point,
+                comps.over_point,
                 comps.eye,
                 comps.normal,
+                self.isShadowed(comps.over_point),
             );
         }
 
@@ -188,4 +204,48 @@ test "worlds are shaded at comptime" {
         const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
         try testing.expect(w.colorAt(r).eql(Col.init(0.38066, 0.47583, 0.2855)));
     }
+}
+
+test "nothing collinear with the point and the light casts a shadow" {
+    const objects = defaultObjects();
+    const w = defaultWorld(&objects);
+    try testing.expect(!w.isShadowed(V.point(0, 10, 0)));
+}
+
+test "an object between the point and the light casts a shadow" {
+    const objects = defaultObjects();
+    const w = defaultWorld(&objects);
+    try testing.expect(w.isShadowed(V.point(10, -10, 10)));
+}
+
+test "an object behind the light casts no shadow" {
+    const objects = defaultObjects();
+    const w = defaultWorld(&objects);
+    try testing.expect(!w.isShadowed(V.point(-20, 20, -20)));
+}
+
+test "an object behind the point casts no shadow" {
+    const objects = defaultObjects();
+    const w = defaultWorld(&objects);
+    try testing.expect(!w.isShadowed(V.point(-2, 2, -2)));
+}
+
+test "a world without a light shadows nothing" {
+    const objects = defaultObjects();
+    const w: W = .{ .objects = &objects };
+    try testing.expect(!w.isShadowed(V.point(10, -10, 10)));
+}
+
+test "shading a crossing that lies in shadow leaves only ambient" {
+    const objects = [2]S{
+        .{},
+        .{ .id = 1, .transform = Tf.translation(0, 0, 10) },
+    };
+    const w: W = .{
+        .objects = &objects,
+        .light = L.init(V.point(0, 0, -10), Col.white),
+    };
+    const r = R.init(V.point(0, 0, 5), V.vector(0, 0, 1));
+    const comps = W.Hit.init(4, &objects[1]).prepare(r).?;
+    try testing.expect(w.shadeHit(comps).eql(Col.init(0.1, 0.1, 0.1)));
 }
