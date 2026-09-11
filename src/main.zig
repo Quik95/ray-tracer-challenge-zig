@@ -1,4 +1,4 @@
-//! Draws the twelve hour marks of a clock face to a PPM image.
+//! Casts a ray at a sphere for every pixel and draws its silhouette.
 //!
 //! The image size comes from the command line: `SIZE` for a square, or
 //! `WIDTHxHEIGHT` (equivalently `WIDTH HEIGHT`) for anything else.
@@ -14,28 +14,35 @@ const Io = std.Io;
 const rt = @import("ray_tracing_challange_zig");
 const V = rt.Tup;
 const C = rt.Col;
-const Face = rt.clock.Default;
 
-const file_name = "clock.ppm";
+const file_name = "silhouette.ppm";
+
+/// The eye, the wall the sphere's shadow falls on, and how much of that wall
+/// the image covers. The wall is far enough back and wide enough that a unit
+/// sphere at the origin fits on it with room to spare.
+const ray_origin = V.point(0, 0, -5);
+const wall_z = 10.0;
+const wall_size = 7.0;
 
 const Size = struct {
     width: usize,
     height: usize,
 
-    const default: Size = .{ .width = 400, .height = 400 };
+    const default: Size = .{ .width = 200, .height = 200 };
 
-    /// How far the face reaches from the centre, in pixels. Measured against
-    /// the shorter side so the clock stays on the canvas when it is not
-    /// square.
-    fn radius(self: Size) f64 {
-        return 3.0 / 8.0 * @as(f64, @floatFromInt(@min(self.width, self.height)));
+    /// How much of the wall one pixel spans, in world units.
+    fn pixelSize(self: Size) struct { f64, f64 } {
+        return .{
+            wall_size / @as(f64, @floatFromInt(self.width)),
+            wall_size / @as(f64, @floatFromInt(self.height)),
+        };
     }
 };
 
 const usage =
-    \\usage: clock [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT]
+    \\usage: silhouette [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT]
     \\
-    \\Renders the clock face at the given size in pixels (default 400x400).
+    \\Renders the sphere at the given size in pixels (default 200x200).
     \\
 ;
 
@@ -80,18 +87,9 @@ pub fn main(init: std.process.Init) !void {
     var image = try rt.Image.init(gpa, size.width, size.height);
     defer image.deinit(gpa);
 
-    // The face is a unit circle at the origin; scale it up to the canvas and
-    // slide the centre from the corner to the middle.
-    const to_canvas = rt.Tf.chain()
-        .scale(size.radius(), 1, size.radius())
-        .translate(
-        @as(f64, @floatFromInt(size.width)) / 2,
-        0,
-        @as(f64, @floatFromInt(size.height)) / 2,
-    );
-
-    const mark = C.init(1, 0.85, 0.4);
-    for (Face.positions()) |p| plot(image, to_canvas.apply(p), mark);
+    const shape: rt.S = .{};
+    const lit = C.init(1, 0.2, 0.25);
+    const hits = cast(image, shape, lit);
 
     const stdout: Io.File = .stdout();
     const piped = !try stdout.isTty(io);
@@ -101,7 +99,7 @@ pub fn main(init: std.process.Init) !void {
     var log_buffer: [1024]u8 = undefined;
     var log_writer: Io.File.Writer = .init(if (piped) .stderr() else stdout, io, &log_buffer);
     const log = &log_writer.interface;
-    try log.print("placed {d} hour marks\n", .{Face.hours});
+    try log.print("{d} of {d} rays hit the sphere\n", .{ hits, size.width * size.height });
 
     if (piped) {
         var image_buffer: [64 * 1024]u8 = undefined;
@@ -147,13 +145,32 @@ fn parseDimension(text: []const u8) ParseError!usize {
     return std.fmt.parseInt(usize, text, 10) catch error.NotANumber;
 }
 
-/// Plot a canvas-space position onto the image. The face lies in the xz
-/// plane, so z is what runs down the image; anything that lands off the
-/// canvas is dropped.
-fn plot(image: rt.Image, position: V, c: C) void {
-    const x: isize = @intFromFloat(@round(position.x()));
-    const y: isize = @intFromFloat(@round(position.z()));
-    _ = image.plot(x, y, c);
+/// Cast one ray per pixel from the eye through that pixel's point on the
+/// wall, colouring the pixel wherever the ray reaches the sphere. Returns how
+/// many rays hit.
+///
+/// World y grows upwards and canvas y downwards, so the rows are walked from
+/// the top of the wall down.
+fn cast(image: rt.Image, shape: rt.S, c: C) usize {
+    const size: Size = .{ .width = image.width, .height = image.height };
+    const pixel_x, const pixel_y = size.pixelSize();
+    const half = wall_size / 2.0;
+
+    var hits: usize = 0;
+    for (0..image.height) |y| {
+        const world_y = half - pixel_y * @as(f64, @floatFromInt(y));
+        for (0..image.width) |x| {
+            const world_x = -half + pixel_x * @as(f64, @floatFromInt(x));
+            const target = V.point(world_x, world_y, wall_z);
+            const r = rt.R.init(ray_origin, target.sub(ray_origin).normalize());
+
+            const xs = shape.intersect(r) orelse continue;
+            if (rt.S.Hit.hit(&xs) == null) continue;
+            image.writePixel(x, y, c);
+            hits += 1;
+        }
+    }
+    return hits;
 }
 
 /// `name` inside the system temporary directory. Caller owns the result.
@@ -209,7 +226,9 @@ test "sizes must be whole positive numbers" {
     try testing.expectError(error.TooManyArguments, parseSize(&.{ "1", "2", "3" }));
 }
 
-test "the face is measured against the shorter side" {
-    const wide = Size{ .width = 800, .height = 400 };
-    try testing.expectEqual(@as(f64, 150), wide.radius());
+test "a pixel spans the wall divided by the pixel count" {
+    const wide = Size{ .width = 700, .height = 350 };
+    const px, const py = wide.pixelSize();
+    try testing.expectEqual(@as(f64, 0.01), px);
+    try testing.expectEqual(@as(f64, 0.02), py);
 }

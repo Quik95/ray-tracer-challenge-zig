@@ -13,6 +13,9 @@ pub const matrix = @import("matrix.zig");
 pub const transform = @import("transform.zig");
 pub const projectile = @import("projectile.zig");
 pub const clock = @import("clock.zig");
+pub const ray = @import("ray.zig");
+pub const intersection = @import("intersection.zig");
+pub const sphere = @import("sphere.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -39,6 +42,19 @@ pub const Transforms = transform.Transforms;
 /// The transformations at the precision the ray tracer uses.
 pub const Tf = transform.Tf;
 
+/// Generic ray, parameterized by float type.
+pub const Ray = ray.Ray;
+/// The ray at the precision the ray tracer uses.
+pub const R = ray.R;
+
+/// Generic ray-object intersection.
+pub const Intersection = intersection.Intersection;
+
+/// Generic sphere, parameterized by float type.
+pub const Sphere = sphere.Sphere;
+/// The sphere at the precision the ray tracer uses.
+pub const S = sphere.S;
+
 /// Generic pixel grid, parameterized by color type.
 pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
@@ -56,6 +72,9 @@ const covered_sources = [_][]const u8{
     "transform.zig",
     "projectile.zig",
     "clock.zig",
+    "ray.zig",
+    "intersection.zig",
+    "sphere.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };
@@ -68,6 +87,9 @@ test {
     _ = transform;
     _ = projectile;
     _ = clock;
+    _ = ray;
+    _ = intersection;
+    _ = sphere;
 }
 
 test "every file in src/ is imported here" {
