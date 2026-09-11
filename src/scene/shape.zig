@@ -60,8 +60,7 @@ pub fn Shape(comptime T: type) type {
             }
         };
 
-        /// Distinguishes one shape from another in output; intersections
-        /// identify their object by pointer.
+        /// An optional output label; intersections identify their object by pointer.
         id: usize = 0,
         /// Object space to world space. The identity leaves the geometry
         /// exactly where it is written.
@@ -71,12 +70,8 @@ pub fn Shape(comptime T: type) type {
         /// The surface itself.
         geometry: Geometry = .{ .sphere = .{} },
 
-        var next_id: usize = 0;
-
-        /// A shape with an id no other shape shares.
         pub fn init(geometry: Geometry) Self {
             return .{
-                .id = @atomicRmw(usize, &next_id, .Add, 1, .monotonic),
                 .geometry = geometry,
             };
         }
@@ -89,12 +84,12 @@ pub fn Shape(comptime T: type) type {
             return init(.{ .plane = .{} });
         }
 
-        /// A sphere of glass: clear through, and bending light as glass
-        /// does. Scenes want a marble often enough to name one.
         pub fn cube() Self {
             return init(.{ .cube = .{} });
         }
 
+        /// A sphere of glass: clear through, and bending light as glass
+        /// does. Scenes want a marble often enough to name one.
         pub fn glassSphere() Self {
             var self = sphere();
             self.material.transparency = 1.0;
@@ -189,10 +184,26 @@ test "a shape's transformation and material can be assigned" {
     try testing.expect(s.material.eql(m));
 }
 
-test "shapes are told apart from one another" {
-    const a = Sh.sphere();
-    const b = Sh.plane();
-    try testing.expect(a.id != b.id);
+test "shape copies retain labels but intersections identify objects by pointer" {
+    var a = Sh.sphere();
+    try testing.expectEqual(@as(usize, 0), a.id);
+    a.id = 42;
+    var b = a;
+    try testing.expectEqual(a.id, b.id);
+    const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
+    const ax = a.intersect(r);
+    const bx = b.intersect(r);
+    try testing.expectEqual(&a, ax.items()[0].object);
+    try testing.expectEqual(&b, bx.items()[0].object);
+    try testing.expect(ax.items()[0].object != bx.items()[0].object);
+}
+
+test "shape constructors work at comptime with default labels" {
+    comptime {
+        for (.{ Sh.sphere(), Sh.plane(), Sh.cube(), Sh.glassSphere() }) |s| {
+            try testing.expectEqual(@as(usize, 0), s.id);
+        }
+    }
 }
 
 test "intersecting a scaled shape carries the ray into its coordinates" {
