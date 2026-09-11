@@ -1,14 +1,13 @@
-//! Three spheres resting in a corner, and the camera that looks at them.
+//! Three spheres resting on a floor, and the camera that looks at them.
 //!
-//! The room is built from spheres too: flattening one almost to nothing and
-//! standing it up gives a floor or a wall, which saves needing a second kind
-//! of shape to put the scene in a room.
+//! The room is two planes: one lying flat for the floor, one stood on edge
+//! behind the balls for the backdrop.
 
 const std = @import("std");
 const camera_mod = @import("../render/camera.zig");
 const color = @import("../render/color.zig");
 const light_mod = @import("../scene/light.zig");
-const sphere = @import("../scene/sphere.zig");
+const shape = @import("../scene/shape.zig");
 const transform = @import("../math/transform.zig");
 const tuple = @import("../math/tuple.zig");
 const world_mod = @import("../scene/world.zig");
@@ -19,47 +18,42 @@ pub fn Scene(comptime T: type) type {
         pub const C = color.Color(T);
         pub const Cam = camera_mod.Camera(T);
         pub const Light = light_mod.PointLight(T);
-        pub const Object = sphere.Sphere(T);
+        pub const Object = shape.Shape(T);
         pub const Tf = transform.Transforms(T);
         pub const V = tuple.Tuple(T);
         pub const World = world_mod.World(T);
 
-        pub const object_count = 6;
+        pub const object_count = 5;
 
         /// The matte, barely reflective surface the room is made of.
         const room_material: Object.Mat = .{ .color = C.init(1, 0.9, 0.9), .specular = 0 };
 
-        /// The floor and the two walls behind it, then the three balls.
+        /// The floor and the wall behind it, then the three balls.
         pub fn objects() [object_count]Object {
-            const wall = Tf.chain().scale(10, 0.01, 10).rotateX(std.math.pi / 2.0);
             return .{
                 .{
                     .id = 0,
-                    .transform = Tf.scaling(10, 0.01, 10),
+                    .geometry = .{ .plane = .{} },
                     .material = room_material,
                 },
                 .{
                     .id = 1,
-                    .transform = wall.rotateY(-std.math.pi / 4.0).translate(0, 0, 5).m,
+                    .geometry = .{ .plane = .{} },
+                    .transform = Tf.chain().rotateX(std.math.pi / 2.0).translate(0, 0, 5).m,
                     .material = room_material,
                 },
                 .{
                     .id = 2,
-                    .transform = wall.rotateY(std.math.pi / 4.0).translate(0, 0, 5).m,
-                    .material = room_material,
-                },
-                .{
-                    .id = 3,
                     .transform = Tf.translation(-0.5, 1, 0.5),
                     .material = .{ .color = C.init(0.1, 1, 0.5), .diffuse = 0.7, .specular = 0.3 },
                 },
                 .{
-                    .id = 4,
+                    .id = 3,
                     .transform = Tf.chain().scale(0.5, 0.5, 0.5).translate(1.5, 0.5, -0.5).m,
                     .material = .{ .color = C.init(0.5, 1, 0.1), .diffuse = 0.7, .specular = 0.3 },
                 },
                 .{
-                    .id = 5,
+                    .id = 4,
                     .transform = Tf.chain().scale(0.33, 0.33, 0.33).translate(-1.5, 0.33, -0.75).m,
                     .material = .{ .color = C.init(1, 0.8, 0.1), .diffuse = 0.7, .specular = 0.3 },
                 },
@@ -91,12 +85,12 @@ pub const Default = Scene(f64);
 
 const testing = std.testing;
 
-test "the scene stands three balls in a room" {
+test "the scene stands three balls on a floor" {
     const objects = Default.objects();
     try testing.expectEqual(Default.object_count, objects.len);
 
     // The middle ball is a unit sphere lifted to rest on the floor.
-    try testing.expect(objects[3].transform.mulTuple(tuple.Tup.point(0, -1, 0))
+    try testing.expect(objects[2].transform.mulTuple(tuple.Tup.point(0, -1, 0))
         .eql(tuple.Tup.point(-0.5, 0, 0.5)));
 }
 
@@ -108,4 +102,11 @@ test "the camera looks at the middle ball from in front of it" {
     // The centre of the frame lands on something, not on empty space.
     const r = c.rayForPixel(10, 5).?;
     try testing.expect(w.hit(r) != null);
+}
+
+test "the floor is a plane the balls stand on" {
+    const objects = Default.objects();
+    try testing.expect(objects[0].geometry == .plane);
+    try testing.expect(objects[0].normalAt(tuple.Tup.point(7, 0, -3)).?
+        .eql(tuple.Tup.vector(0, 1, 0)));
 }

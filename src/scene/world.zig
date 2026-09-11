@@ -7,7 +7,7 @@ const std = @import("std");
 const color_mod = @import("../render/color.zig");
 const light_mod = @import("light.zig");
 const ray_mod = @import("ray.zig");
-const sphere_mod = @import("sphere.zig");
+const shape_mod = @import("shape.zig");
 const transform = @import("../math/transform.zig");
 const tuple = @import("../math/tuple.zig");
 
@@ -18,7 +18,7 @@ pub fn World(comptime T: type) type {
 
         pub const C = color_mod.Color(T);
         pub const Light = light_mod.PointLight(T);
-        pub const Object = sphere_mod.Sphere(T);
+        pub const Object = shape_mod.Shape(T);
         pub const Ray = ray_mod.Ray(T);
         pub const Hit = Object.Hit;
         pub const Comps = Hit.Computations;
@@ -34,8 +34,8 @@ pub fn World(comptime T: type) type {
         pub fn intersect(self: Self, r: Ray, buf: []Hit) []Hit {
             var n: usize = 0;
             for (self.objects) |*object| {
-                const xs = object.intersect(r) orelse continue;
-                for (xs) |x| {
+                const xs = object.intersect(r);
+                for (xs.items()) |x| {
                     if (n == buf.len) break;
                     buf[n] = x;
                     n += 1;
@@ -52,8 +52,8 @@ pub fn World(comptime T: type) type {
         pub fn hit(self: Self, r: Ray) ?Hit {
             var closest: ?Hit = null;
             for (self.objects) |*object| {
-                const xs = object.intersect(r) orelse continue;
-                for (xs) |x| {
+                const xs = object.intersect(r);
+                for (xs.items()) |x| {
                     if (x.t < 0) continue;
                     if (closest == null or x.t < closest.?.t) closest = x;
                 }
@@ -106,20 +106,20 @@ const testing = std.testing;
 const Col = color_mod.Col;
 const L = light_mod.Light;
 const R = ray_mod.R;
-const S = sphere_mod.S;
+const Sh = shape_mod.Sh;
 const Tf = transform.Tf;
 const V = tuple.Tup;
 
 /// The two concentric spheres the chapter's scenarios are posed against: a
 /// unit sphere and a half-size one inside it.
-fn defaultObjects() [2]S {
+fn defaultObjects() [2]Sh {
     return .{
         .{ .material = .{ .color = Col.init(0.8, 1.0, 0.6), .diffuse = 0.7, .specular = 0.2 } },
         .{ .id = 1, .transform = Tf.scaling(0.5, 0.5, 0.5) },
     };
 }
 
-fn defaultWorld(objects: []const S) W {
+fn defaultWorld(objects: []const Sh) W {
     return .{
         .objects = objects,
         .light = L.init(V.point(-10, 10, -10), Col.white),
@@ -237,7 +237,7 @@ test "a world without a light shadows nothing" {
 }
 
 test "shading a crossing that lies in shadow leaves only ambient" {
-    const objects = [2]S{
+    const objects = [2]Sh{
         .{},
         .{ .id = 1, .transform = Tf.translation(0, 0, 10) },
     };

@@ -62,7 +62,8 @@ need to read the source material; do not commit the book or long excerpts of it.
   run, and keeps `covered_sources` in sync with `src/` on disk.
 - `src/main.zig` — the executable's root, its own module.
 - `src/math/` — tuples, matrices, and the transformations built from them.
-- `src/scene/` — what a ray is and what it meets: rays, spheres, intersections.
+- `src/scene/` — what a ray is and what it meets: rays, shapes and their
+  geometries, intersections.
 - `src/render/` — colors and the canvas they are written to.
 - `src/demo/` — the scenes `src/main.zig` draws.
 - `build.zig` — build graph; `listZigSources` walks `src/` recursively and

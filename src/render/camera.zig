@@ -110,11 +110,11 @@ pub const Cam = Camera(f64);
 const testing = std.testing;
 const color = @import("color.zig");
 const light = @import("../scene/light.zig");
-const sphere = @import("../scene/sphere.zig");
+const shape = @import("../scene/shape.zig");
 const transform = @import("../math/transform.zig");
 
 const Col = color.Col;
-const S = sphere.S;
+const Sh = shape.Sh;
 const Tf = transform.Tf;
 const V = tuple.Tup;
 const pi = std.math.pi;
@@ -162,7 +162,7 @@ test "a collapsed camera transformation casts no rays" {
 }
 
 test "rendering a world with a camera" {
-    const objects = [_]S{
+    const objects = [_]Sh{
         .{ .material = .{ .color = Col.init(0.8, 1.0, 0.6), .diffuse = 0.7, .specular = 0.2 } },
         .{ .id = 1, .transform = Tf.scaling(0.5, 0.5, 0.5) },
     };

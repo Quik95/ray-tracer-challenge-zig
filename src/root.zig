@@ -15,6 +15,8 @@ pub const transform = @import("math/transform.zig");
 pub const ray = @import("scene/ray.zig");
 pub const intersection = @import("scene/intersection.zig");
 pub const sphere = @import("scene/sphere.zig");
+pub const plane = @import("scene/plane.zig");
+pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
 pub const world = @import("scene/world.zig");
@@ -62,10 +64,20 @@ pub const R = ray.R;
 /// Generic ray-object intersection.
 pub const Intersection = intersection.Intersection;
 
-/// Generic sphere, parameterized by float type.
+/// Generic unit-sphere geometry, parameterized by float type.
 pub const Sphere = sphere.Sphere;
-/// The sphere at the precision the ray tracer uses.
+/// The sphere geometry at the precision the ray tracer uses.
 pub const S = sphere.S;
+
+/// Generic plane geometry, parameterized by float type.
+pub const Plane = plane.Plane;
+/// The plane geometry at the precision the ray tracer uses.
+pub const P = plane.P;
+
+/// Generic shape: a geometry placed in the world, and its material.
+pub const Shape = shape.Shape;
+/// The shape at the precision the ray tracer uses.
+pub const Sh = shape.Sh;
 
 /// Generic point light, parameterized by float type.
 pub const PointLight = light.PointLight;
@@ -103,6 +115,8 @@ const covered_sources = [_][]const u8{
     "scene/ray.zig",
     "scene/intersection.zig",
     "scene/sphere.zig",
+    "scene/plane.zig",
+    "scene/shape.zig",
     "scene/light.zig",
     "scene/material.zig",
     "scene/world.zig",
@@ -127,6 +141,8 @@ test {
     _ = ray;
     _ = intersection;
     _ = sphere;
+    _ = plane;
+    _ = shape;
     _ = light;
     _ = material;
     _ = world;

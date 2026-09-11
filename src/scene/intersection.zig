@@ -3,6 +3,36 @@
 
 const std = @import("std");
 
+/// The distances along a ray at which a bare geometry is met — at most
+/// `capacity` of them, since every shape the tracer knows is met a bounded
+/// number of times. Geometries report distances alone; the shape wearing the
+/// geometry is what turns them into intersections.
+pub fn Roots(comptime T: type, comptime capacity: usize) type {
+    return struct {
+        const Self = @This();
+
+        ts: [capacity]T = undefined,
+        len: usize = 0,
+
+        /// No crossing at all: the ray misses.
+        pub const none: Self = .{};
+
+        /// The roots given, in the order given.
+        pub fn of(ts: anytype) Self {
+            var self: Self = .{};
+            inline for (ts) |t| {
+                self.ts[self.len] = t;
+                self.len += 1;
+            }
+            return self;
+        }
+
+        pub fn items(self: *const Self) []const T {
+            return self.ts[0..self.len];
+        }
+    };
+}
+
 /// A single crossing of a ray and an object, over a float type and the type
 /// of object that was hit.
 pub fn Intersection(comptime T: type, comptime Object: type) type {
@@ -96,22 +126,22 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
 // --- Tests ------------------------------------------------------------------
 
 const testing = std.testing;
-const sphere = @import("sphere.zig");
-const S = sphere.S;
-const X = S.Hit;
+const shape = @import("shape.zig");
+const Sh = shape.Sh;
+const X = Sh.Hit;
 const R = @import("ray.zig").R;
 const Tf = @import("../math/transform.zig").Tf;
 const V = @import("../math/tuple.zig").Tup;
 
 test "an intersection encapsulates t and object" {
-    const s = S.init();
+    const s = Sh.sphere();
     const i = X.init(3.5, &s);
     try testing.expectEqual(@as(f64, 3.5), i.t);
     try testing.expectEqual(&s, i.object);
 }
 
 test "aggregating intersections" {
-    const s = S.init();
+    const s = Sh.sphere();
     const xs = [_]X{ X.init(1, &s), X.init(2, &s) };
     try testing.expectEqual(@as(usize, 2), xs.len);
     try testing.expectEqual(@as(f64, 1), xs[0].t);
@@ -119,7 +149,7 @@ test "aggregating intersections" {
 }
 
 test "the hit, when all intersections have positive t" {
-    const s = S.init();
+    const s = Sh.sphere();
     const near = X.init(1, &s);
     const far = X.init(2, &s);
     const xs = [_]X{ far, near };
@@ -127,7 +157,7 @@ test "the hit, when all intersections have positive t" {
 }
 
 test "the hit, when some intersections have negative t" {
-    const s = S.init();
+    const s = Sh.sphere();
     const behind = X.init(-1, &s);
     const ahead = X.init(1, &s);
     const xs = [_]X{ ahead, behind };
@@ -135,20 +165,20 @@ test "the hit, when some intersections have negative t" {
 }
 
 test "the hit, when all intersections have negative t" {
-    const s = S.init();
+    const s = Sh.sphere();
     const xs = [_]X{ X.init(-2, &s), X.init(-1, &s) };
     try testing.expect(X.hit(&xs) == null);
 }
 
 test "the hit is always the lowest nonnegative intersection" {
-    const s = S.init();
+    const s = Sh.sphere();
     const nearest = X.init(2, &s);
     const xs = [_]X{ X.init(5, &s), X.init(7, &s), X.init(-3, &s), nearest };
     try testing.expect(X.hit(&xs).?.eql(nearest));
 }
 
 test "sorting orders intersections nearest first" {
-    const s = S.init();
+    const s = Sh.sphere();
     var xs = [_]X{ X.init(5, &s), X.init(-3, &s), X.init(2, &s) };
     X.sort(&xs);
     try testing.expectEqual(@as(f64, -3), xs[0].t);
@@ -158,8 +188,8 @@ test "sorting orders intersections nearest first" {
 
 test "the hit lifts the point clear of the surface" {
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
-    const shape: S = .{ .transform = Tf.translation(0, 0, 1) };
-    const comps = X.init(5, &shape).prepare(r).?;
+    const s: Sh = .{ .transform = Tf.translation(0, 0, 1) };
+    const comps = X.init(5, &s).prepare(r).?;
 
     try testing.expect(comps.over_point.z() < -V.epsilon / 2);
     try testing.expect(comps.point.z() > comps.over_point.z());
