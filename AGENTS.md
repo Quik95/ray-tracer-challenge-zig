@@ -23,10 +23,22 @@ need to read the source material; do not commit the book or long excerpts of it.
 
 ## Code guidance
 
-- **Do not reference book chapters in comments, doc comments, or commit
-  messages.** No "Chapter 1", no "Putting It Together", no "as of Chapter 5".
-  The code should read as a ray tracer, not as a reading log. Explain what a
-  thing does and why, never where it came from.
+- **Do not reference book chapters in comments or doc comments.** No "Chapter
+  1", no "Putting It Together", no "as of Chapter 5". The code should read as a
+  ray tracer, not as a reading log. Explain what a thing does and why, never
+  where it came from. The sole exception is the commit subject prefix below.
+- **Prefix every commit subject with the chapter the work comes from**, as
+  `Chapter <n>: <Title> — <subject>`, so the history reads as progress through
+  the book:
+
+      Chapter 1: Tuples, Points, and Vectors — add tuples and the sim
+      Chapter 2: Drawing on a Canvas — add colors, the canvas, PPM output
+
+  The number and title come from the book verbatim, and the subject after the
+  dash stays in the imperative mood; keep it short, since the prefix eats most
+  of the line. Work that belongs to no chapter — tooling, CI, a refactor —
+  takes no prefix. The body explains what changed and why, and stays free of
+  chapter references like the code does.
 - Tests mirror the book's scenarios, but name them after the behaviour they
   check, not the scenario number or the chapter.
 - **Lean on `comptime` as much as the problem allows.** Reach for it first, not
