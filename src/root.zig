@@ -7,6 +7,8 @@ const std = @import("std");
 // `std.testing.refAllDeclsRecursive`; the maintainers' advice is to list
 // declarations explicitly, so every module of this package is named here.
 pub const tuple = @import("tuple.zig");
+pub const color = @import("color.zig");
+pub const canvas = @import("canvas.zig");
 pub const projectile = @import("projectile.zig");
 
 /// Generic 4-tuple, parameterized by float type.
@@ -16,12 +18,25 @@ pub const Tup = tuple.Tup;
 pub const Axis = tuple.Axis;
 pub const feq = tuple.feq;
 
+/// Generic RGB color, parameterized by float type.
+pub const Color = color.Color;
+/// The f64 color used throughout the ray tracer.
+pub const Col = color.Col;
+pub const Channel = color.Channel;
+
+/// Generic pixel grid, parameterized by color type.
+pub const Canvas = canvas.Canvas;
+/// The canvas the ray tracer renders into.
+pub const Image = canvas.Image;
+
 /// Source files whose tests are pulled in by the imports above. Kept in sync
 /// with `src/` by the test below, so adding a file and forgetting to import it
 /// fails the suite instead of silently skipping its tests.
 const covered_sources = [_][]const u8{
     "root.zig",
     "tuple.zig",
+    "color.zig",
+    "canvas.zig",
     "projectile.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
@@ -29,6 +44,8 @@ const covered_sources = [_][]const u8{
 
 test {
     _ = tuple;
+    _ = color;
+    _ = canvas;
     _ = projectile;
 }
 
