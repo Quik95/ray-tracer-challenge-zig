@@ -7,7 +7,7 @@
 //! where the image is written out.
 
 const std = @import("std");
-const tuple = @import("tuple.zig");
+const tuple = @import("../math/tuple.zig");
 
 /// Component selector, mirroring `tuple.Axis`.
 pub const Channel = enum(u2) { red, green, blue };

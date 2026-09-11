@@ -7,9 +7,9 @@
 
 const std = @import("std");
 const intersection = @import("intersection.zig");
-const matrix = @import("matrix.zig");
+const matrix = @import("../math/matrix.zig");
 const ray = @import("ray.zig");
-const tuple = @import("tuple.zig");
+const tuple = @import("../math/tuple.zig");
 
 /// A sphere, over a float type.
 pub fn Sphere(comptime T: type) type {
@@ -75,7 +75,7 @@ pub const S = Sphere(f64);
 const testing = std.testing;
 const V = tuple.Tup;
 const R = ray.R;
-const Tf = @import("transform.zig").Tf;
+const Tf = @import("../math/transform.zig").Tf;
 
 test "a ray intersects a sphere at two points" {
     const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));

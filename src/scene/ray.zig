@@ -1,8 +1,8 @@
 //! Rays: a starting point and the direction it travels in.
 
 const std = @import("std");
-const matrix = @import("matrix.zig");
-const tuple = @import("tuple.zig");
+const matrix = @import("../math/matrix.zig");
+const tuple = @import("../math/tuple.zig");
 
 /// A ray, over a float type.
 pub fn Ray(comptime T: type) type {
@@ -48,7 +48,7 @@ pub const R = Ray(f64);
 
 const testing = std.testing;
 const V = tuple.Tup;
-const Tf = @import("transform.zig").Tf;
+const Tf = @import("../math/transform.zig").Tf;
 
 test "creating and querying a ray" {
     const origin = V.point(1, 2, 3);

@@ -5,8 +5,8 @@
 //! following hour is a twelfth of a turn about y away from it.
 
 const std = @import("std");
-const transform = @import("transform.zig");
-const tuple = @import("tuple.zig");
+const transform = @import("../math/transform.zig");
+const tuple = @import("../math/tuple.zig");
 
 /// The clock face, over a float type.
 pub fn Clock(comptime T: type) type {

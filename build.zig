@@ -46,25 +46,47 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
 }
 
-/// Names of the `.zig` files directly under `sub_path`, sorted for a stable
-/// build hash. Read at configure time, so a new file invalidates the cache.
+/// Paths of the `.zig` files under `sub_path`, relative to it and including
+/// subdirectories, sorted for a stable build hash. Read at configure time, so
+/// a new file invalidates the cache.
 fn listZigSources(b: *std.Build, sub_path: []const u8) []const []const u8 {
-    const io = b.graph.io;
-    var dir = b.build_root.handle.openDir(io, sub_path, .{ .iterate = true }) catch |err|
-        std.debug.panic("unable to open {s}: {s}", .{ sub_path, @errorName(err) });
-    defer dir.close(io);
-
     var names: std.ArrayList([]const u8) = .empty;
-    var it = dir.iterate();
-    while (it.next(io) catch @panic("unable to iterate src/")) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
-        names.append(b.allocator, b.dupe(entry.name)) catch @panic("OOM");
-    }
+    collectZigSources(b, &names, sub_path, "");
     std.mem.sort([]const u8, names.items, {}, struct {
         fn lessThan(_: void, a: []const u8, c: []const u8) bool {
             return std.mem.lessThan(u8, a, c);
         }
     }.lessThan);
     return names.toOwnedSlice(b.allocator) catch @panic("OOM");
+}
+
+/// Append every `.zig` file under `dir_path` to `names`, naming each by its
+/// path relative to the directory the walk started in.
+fn collectZigSources(
+    b: *std.Build,
+    names: *std.ArrayList([]const u8),
+    dir_path: []const u8,
+    prefix: []const u8,
+) void {
+    const io = b.graph.io;
+    var dir = b.build_root.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("unable to open {s}: {s}", .{ dir_path, @errorName(err) });
+    defer dir.close(io);
+
+    var it = dir.iterate();
+    while (it.next(io) catch std.debug.panic("unable to iterate {s}", .{dir_path})) |entry| {
+        const relative = b.pathJoin(&.{ prefix, entry.name });
+        switch (entry.kind) {
+            .file => if (std.mem.endsWith(u8, entry.name, ".zig")) {
+                names.append(b.allocator, relative) catch @panic("OOM");
+            },
+            .directory => collectZigSources(
+                b,
+                names,
+                b.pathJoin(&.{ dir_path, entry.name }),
+                relative,
+            ),
+            else => {},
+        }
+    }
 }

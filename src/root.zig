@@ -6,16 +6,23 @@ const std = @import("std");
 // what makes its `test` blocks run under `zig build test`. Zig 0.16 removed
 // `std.testing.refAllDeclsRecursive`; the maintainers' advice is to list
 // declarations explicitly, so every module of this package is named here.
-pub const tuple = @import("tuple.zig");
-pub const color = @import("color.zig");
-pub const canvas = @import("canvas.zig");
-pub const matrix = @import("matrix.zig");
-pub const transform = @import("transform.zig");
-pub const projectile = @import("projectile.zig");
-pub const clock = @import("clock.zig");
-pub const ray = @import("ray.zig");
-pub const intersection = @import("intersection.zig");
-pub const sphere = @import("sphere.zig");
+// Numbers and geometry.
+pub const tuple = @import("math/tuple.zig");
+pub const matrix = @import("math/matrix.zig");
+pub const transform = @import("math/transform.zig");
+
+// What a ray meets, and what it meets it with.
+pub const ray = @import("scene/ray.zig");
+pub const intersection = @import("scene/intersection.zig");
+pub const sphere = @import("scene/sphere.zig");
+
+// Pixels, and getting them out of the program.
+pub const color = @import("render/color.zig");
+pub const canvas = @import("render/canvas.zig");
+
+// Scenes the demo program can draw.
+pub const projectile = @import("demo/projectile.zig");
+pub const clock = @import("demo/clock.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -65,16 +72,16 @@ pub const Image = canvas.Image;
 /// fails the suite instead of silently skipping its tests.
 const covered_sources = [_][]const u8{
     "root.zig",
-    "tuple.zig",
-    "color.zig",
-    "canvas.zig",
-    "matrix.zig",
-    "transform.zig",
-    "projectile.zig",
-    "clock.zig",
-    "ray.zig",
-    "intersection.zig",
-    "sphere.zig",
+    "math/tuple.zig",
+    "math/matrix.zig",
+    "math/transform.zig",
+    "scene/ray.zig",
+    "scene/intersection.zig",
+    "scene/sphere.zig",
+    "render/color.zig",
+    "render/canvas.zig",
+    "demo/projectile.zig",
+    "demo/clock.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };

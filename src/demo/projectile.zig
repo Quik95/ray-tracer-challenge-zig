@@ -1,7 +1,7 @@
 //! A virtual cannon, to exercise the tuple code.
 
 const std = @import("std");
-const tuple = @import("tuple.zig");
+const tuple = @import("../math/tuple.zig");
 
 /// The simulation, generic over the tuple type it flies through.
 pub fn Sim(comptime Tup: type) type {
