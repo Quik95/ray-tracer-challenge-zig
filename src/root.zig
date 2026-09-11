@@ -1,18 +1,50 @@
-//! By convention, root.zig is the root source file when making a package.
+//! The Ray Tracer Challenge, implemented in Zig.
+
 const std = @import("std");
-const Io = std.Io;
 
-/// This is a documentation comment to explain the `printAnotherMessage` function below.
-///
-/// Accepting an `Io.Writer` instance is a handy way to write reusable code.
-pub fn printAnotherMessage(writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.print("Run `zig build test` to run the tests.\n", .{});
+// Referencing an import is what makes the compiler analyze that file, which is
+// what makes its `test` blocks run under `zig build test`. Zig 0.16 removed
+// `std.testing.refAllDeclsRecursive`; the maintainers' advice is to list
+// declarations explicitly, so every module of this package is named here.
+pub const tuple = @import("tuple.zig");
+pub const projectile = @import("projectile.zig");
+
+/// Generic 4-tuple, parameterized by float type.
+pub const Tuple = tuple.Tuple;
+/// The f64 tuple used throughout the ray tracer.
+pub const Tup = tuple.Tup;
+pub const Axis = tuple.Axis;
+pub const feq = tuple.feq;
+
+/// Source files whose tests are pulled in by the imports above. Kept in sync
+/// with `src/` by the test below, so adding a file and forgetting to import it
+/// fails the suite instead of silently skipping its tests.
+const covered_sources = [_][]const u8{
+    "root.zig",
+    "tuple.zig",
+    "projectile.zig",
+    // Root of the executable module, covered by its own test binary.
+    "main.zig",
+};
+
+test {
+    _ = tuple;
+    _ = projectile;
 }
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
+test "every file in src/ is imported here" {
+    // build.zig scans src/ and hands the real listing over as an option.
+    const on_disk = @import("source_files").names;
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+    for (on_disk) |name| {
+        for (covered_sources) |covered| {
+            if (std.mem.eql(u8, name, covered)) break;
+        } else {
+            std.debug.print(
+                "src/{s} is not imported by src/root.zig, so its tests never run\n",
+                .{name},
+            );
+            return error.UnimportedSourceFile;
+        }
+    }
 }
