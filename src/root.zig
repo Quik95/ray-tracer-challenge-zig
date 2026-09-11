@@ -17,14 +17,17 @@ pub const intersection = @import("scene/intersection.zig");
 pub const sphere = @import("scene/sphere.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
+pub const world = @import("scene/world.zig");
 
 // Pixels, and getting them out of the program.
 pub const color = @import("render/color.zig");
 pub const canvas = @import("render/canvas.zig");
+pub const camera = @import("render/camera.zig");
 
 // Scenes the demo program can draw.
 pub const projectile = @import("demo/projectile.zig");
 pub const clock = @import("demo/clock.zig");
+pub const spheres = @import("demo/spheres.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -74,6 +77,16 @@ pub const Material = material.Material;
 /// The material at the precision the ray tracer uses.
 pub const Mat = material.Mat;
 
+/// Generic world of objects and a light, parameterized by float type.
+pub const World = world.World;
+/// The world at the precision the ray tracer uses.
+pub const W = world.W;
+
+/// Generic camera, parameterized by float type.
+pub const Camera = camera.Camera;
+/// The camera at the precision the ray tracer uses.
+pub const Cam = camera.Cam;
+
 /// Generic pixel grid, parameterized by color type.
 pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
@@ -92,10 +105,13 @@ const covered_sources = [_][]const u8{
     "scene/sphere.zig",
     "scene/light.zig",
     "scene/material.zig",
+    "scene/world.zig",
     "render/color.zig",
     "render/canvas.zig",
+    "render/camera.zig",
     "demo/projectile.zig",
     "demo/clock.zig",
+    "demo/spheres.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };
@@ -113,6 +129,9 @@ test {
     _ = sphere;
     _ = light;
     _ = material;
+    _ = world;
+    _ = camera;
+    _ = spheres;
 }
 
 test "every file in src/ is imported here" {

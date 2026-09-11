@@ -100,6 +100,28 @@ pub fn Transforms(comptime T: type) type {
             return m;
         }
 
+        /// Orients the world for an eye at `from` looking at `to`, with `up`
+        /// pointing roughly upwards.
+        ///
+        /// It is easier to imagine this moving the eye, but it moves the
+        /// world: the eye stays at the origin looking down -z, and everything
+        /// else is carried into place around it. `up` only has to point
+        /// vaguely upwards — it is squared up against the view direction
+        /// here, so framing a scene takes no trigonometry.
+        pub fn view(from: Tuple4, to: Tuple4, up: Tuple4) M {
+            const forward = to.sub(from).normalize();
+            const left = forward.cross(up.normalize());
+            const true_up = left.cross(forward);
+
+            const orientation = M.init(.{
+                .{ left.x(), left.y(), left.z(), 0 },
+                .{ true_up.x(), true_up.y(), true_up.z(), 0 },
+                .{ -forward.x(), -forward.y(), -forward.z(), 0 },
+                .{ 0, 0, 0, 1 },
+            });
+            return orientation.mul(translation(-from.x(), -from.y(), -from.z()));
+        }
+
         /// A transformation under construction. Each step multiplies its
         /// matrix onto the left of what came before, so the chain reads in
         /// the order the steps are applied rather than in reverse.
@@ -327,4 +349,36 @@ test "the transformations work at other precisions" {
     const P = tuple.Tuple(f32);
     const t = T32.chain().rotateY(std.math.pi / 2.0).translate(0, 1, 0);
     try testing.expect(t.apply(P.point(0, 0, 1)).eql(P.point(1, 1, 0)));
+}
+
+test "the view transformation for the default orientation is the identity" {
+    const t = Tf.view(V.point(0, 0, 0), V.point(0, 0, -1), V.vector(0, 1, 0));
+    try testing.expect(t.eql(Tf.identity));
+}
+
+test "looking in the positive z direction mirrors the world" {
+    const t = Tf.view(V.point(0, 0, 0), V.point(0, 0, 1), V.vector(0, 1, 0));
+    try testing.expect(t.eql(Tf.scaling(-1, 1, -1)));
+}
+
+test "the view transformation moves the world, not the eye" {
+    const t = Tf.view(V.point(0, 0, 8), V.point(0, 0, 0), V.vector(0, 1, 0));
+    try testing.expect(t.eql(Tf.translation(0, 0, -8)));
+}
+
+test "an arbitrary view orients and moves the world at once" {
+    const t = Tf.view(V.point(1, 3, 2), V.point(4, -2, 8), V.vector(1, 1, 0));
+    try testing.expect(t.eql(Tf.M.init(.{
+        .{ -0.50709, 0.50709, 0.67612, -2.36643 },
+        .{ 0.76772, 0.60609, 0.12122, -2.82843 },
+        .{ -0.35857, 0.59761, -0.71714, 0.00000 },
+        .{ 0.00000, 0.00000, 0.00000, 1.00000 },
+    })));
+}
+
+test "the view transformation is available at comptime" {
+    comptime {
+        const t = Tf.view(V.point(0, 0, 0), V.point(0, 0, -1), V.vector(0, 1, 0));
+        try testing.expect(t.eql(Tf.identity));
+    }
 }

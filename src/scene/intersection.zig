@@ -38,6 +38,43 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
             return closest;
         }
 
+        /// Everything the shader needs about one crossing, worked out once so
+        /// that later passes over the same hit do not repeat it.
+        pub const Computations = struct {
+            t: T,
+            object: *const Object,
+            /// Where the crossing is, in world space.
+            point: Object.Point,
+            /// From the surface back towards the eye.
+            eye: Object.Point,
+            /// The surface normal there, always facing the eye.
+            normal: Object.Point,
+            /// Whether the ray met the surface from within the object.
+            inside: bool,
+        };
+
+        /// Work out the shading vectors for this crossing of `r`, or null if
+        /// the object has no surface left to take a normal from.
+        ///
+        /// A hit from inside the object has its normal pointing away from the
+        /// eye, which would shade the surface as though it faced away from
+        /// every light. Flipping it there keeps the interior lit.
+        pub fn prepare(self: Self, r: Object.Ray) ?Computations {
+            const point = r.position(self.t);
+            const eye = r.direction.neg();
+            const normal = self.object.normalAt(point) orelse return null;
+
+            const inside = normal.dot(eye) < 0;
+            return .{
+                .t = self.t,
+                .object = self.object,
+                .point = point,
+                .eye = eye,
+                .normal = if (inside) normal.neg() else normal,
+                .inside = inside,
+            };
+        }
+
         /// Order intersections by increasing t, nearest first.
         pub fn sort(xs: []Self) void {
             std.mem.sort(Self, xs, {}, lessThan);
