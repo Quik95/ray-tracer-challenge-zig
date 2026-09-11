@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+
+      - name: Check formatting
+        run: zig fmt --check .
+
+      - name: Build
+        run: zig build --summary all
+
+      - name: Test
+        run: zig build test --summary all
+
+  lint:
+    name: Static analysis (zlint)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+
+      - name: Install zlint
+        env:
+          ZLINT_VERSION: "0.9.1"
+        run: |
+          curl -fsSL -o zlint \
+            "https://github.com/DonIsaac/zlint/releases/download/v$ZLINT_VERSION/zlint-linux-x86_64"
+          chmod +x zlint
+
+      - name: Run zlint
+        run: ./zlint --deny-warnings
+
+  devenv:
+    name: devenv test (lint + build + test)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
+
+      - name: Run devenv test
+        run: devenv test

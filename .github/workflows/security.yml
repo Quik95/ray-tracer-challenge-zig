@@ -1,0 +1,54 @@
+name: Security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "27 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-audit:
+    name: actionlint + zizmor (via devenv)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF findings to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: devenv
+
+      - name: Install devenv
+        run: nix profile install nixpkgs#devenv
+
+      - name: actionlint (static analysis)
+        run: devenv shell -- actionlint -color
+
+      - name: zizmor (vulnerability audit)
+        run: |
+          devenv shell -- zizmor --persona=pedantic \
+            --format=sarif .github/workflows > zizmor.sarif
+
+      - name: Upload zizmor SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
