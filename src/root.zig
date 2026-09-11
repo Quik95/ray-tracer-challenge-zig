@@ -9,6 +9,7 @@ const std = @import("std");
 pub const tuple = @import("tuple.zig");
 pub const color = @import("color.zig");
 pub const canvas = @import("canvas.zig");
+pub const matrix = @import("matrix.zig");
 pub const projectile = @import("projectile.zig");
 
 /// Generic 4-tuple, parameterized by float type.
@@ -24,6 +25,13 @@ pub const Color = color.Color;
 pub const Col = color.Col;
 pub const Channel = color.Channel;
 
+/// Generic square matrix, parameterized by float type and size.
+pub const Matrix = matrix.Matrix;
+/// The matrix sizes the ray tracer works in.
+pub const Mat2 = matrix.Mat2;
+pub const Mat3 = matrix.Mat3;
+pub const Mat4 = matrix.Mat4;
+
 /// Generic pixel grid, parameterized by color type.
 pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
@@ -37,6 +45,7 @@ const covered_sources = [_][]const u8{
     "tuple.zig",
     "color.zig",
     "canvas.zig",
+    "matrix.zig",
     "projectile.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
@@ -46,6 +55,7 @@ test {
     _ = tuple;
     _ = color;
     _ = canvas;
+    _ = matrix;
     _ = projectile;
 }
 
