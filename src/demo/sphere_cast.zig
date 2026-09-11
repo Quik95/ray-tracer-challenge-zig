@@ -2,12 +2,14 @@
 //!
 //! This is the ray tracer at its smallest: no world, no camera, just an eye at
 //! a fixed point firing one ray per pixel at a flat wall, and a single unit
-//! sphere in the way: every ray the sphere stops is marked, and what that
-//! leaves behind is its outline.
+//! sphere in the way. `Silhouette` marks every ray the sphere stops, which
+//! draws its outline; `Shaded` asks the surface what colour it turns towards
+//! the eye instead, which lifts the same outline off the page.
 
 const std = @import("std");
 const canvas = @import("../render/canvas.zig");
 const color = @import("../render/color.zig");
+const light_mod = @import("../scene/light.zig");
 const ray_mod = @import("../scene/ray.zig");
 const shape = @import("../scene/shape.zig");
 const transform = @import("../math/transform.zig");
@@ -18,6 +20,7 @@ pub fn Cast(comptime T: type) type {
     return struct {
         pub const C = color.Color(T);
         pub const Image = canvas.Canvas(C);
+        pub const Light = light_mod.PointLight(T);
         pub const Object = shape.Shape(T);
         pub const Ray = ray_mod.Ray(T);
         pub const Tf = transform.Transforms(T);
@@ -88,7 +91,60 @@ pub fn Silhouette(comptime T: type) type {
     };
 }
 
+/// The same sphere, answering a light: still one ray per pixel, but each ray
+/// that lands asks the surface what colour it turns towards the eye.
+pub fn Shaded(comptime T: type) type {
+    return struct {
+        pub const Frame = Cast(T);
+        pub const C = Frame.C;
+        pub const Image = Frame.Image;
+        pub const Light = Frame.Light;
+        pub const Object = Frame.Object;
+        pub const V = Frame.V;
+
+        pub const name = "shaded";
+        pub const group = "rays";
+
+        pub fn sphere() Object {
+            return .{ .material = .{ .color = C.init(1, 0.2, 1) } };
+        }
+
+        /// White, behind the eye and over its left shoulder, so the highlight
+        /// lands up and to the left of centre.
+        pub fn light() Light {
+            return .init(V.point(-10, 10, -10), C.init(1, 1, 1));
+        }
+
+        pub fn draw(image: Image) void {
+            const ball = sphere();
+            const lamp = light();
+            for (0..image.height) |y| {
+                for (0..image.width) |x| {
+                    const r = Frame.rayFor(image, x, y);
+                    const hits = ball.intersect(r);
+                    const hit = Object.Hit.hit(hits.items()) orelse continue;
+
+                    const point = r.position(hit.t);
+                    const normal = hit.object.normalAt(point) orelse continue;
+                    const object_point = hit.object.localPoint(point) orelse continue;
+                    // Nothing else is in the scene, so nothing can shadow it.
+                    const shade = hit.object.material.lighting(
+                        lamp,
+                        point,
+                        object_point,
+                        r.direction.neg(),
+                        normal,
+                        false,
+                    );
+                    image.writePixel(x, y, shade);
+                }
+            }
+        }
+    };
+}
+
 pub const DefaultSilhouette = Silhouette(f64);
+pub const DefaultShaded = Shaded(f64);
 
 // --- Tests ------------------------------------------------------------------
 
@@ -124,4 +180,23 @@ test "the silhouette is round: filled in the middle, empty at the corners" {
     try testing.expect(image.pixelAt(10, 10).eql(DefaultSilhouette.ink));
     try testing.expect(image.pixelAt(0, 0).eql(DefaultSilhouette.C.black));
     try testing.expect(image.pixelAt(20, 20).eql(DefaultSilhouette.C.black));
+}
+
+test "shading lights the sphere unevenly, brightest towards the light" {
+    var image = try DefaultShaded.Image.init(testing.allocator, 21, 21);
+    defer image.deinit(testing.allocator);
+    DefaultShaded.draw(image);
+
+    const centre = image.pixelAt(10, 10);
+    const upper_left = image.pixelAt(7, 7);
+    const lower_right = image.pixelAt(13, 13);
+    try testing.expect(!centre.eql(DefaultShaded.C.black));
+    try testing.expect(!upper_left.eql(lower_right));
+    // The lamp stands up and to the left, so that side comes back brighter.
+    try testing.expect(brightness(upper_left) > brightness(lower_right));
+}
+
+/// How much light a colour carries, for comparing two of them.
+fn brightness(c: DefaultShaded.C) f64 {
+    return c.red() + c.green() + c.blue();
 }
