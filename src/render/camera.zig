@@ -57,21 +57,43 @@ pub fn Camera(comptime T: type) type {
             return half_width * 2 / @as(T, @floatFromInt(self.hsize));
         }
 
-        /// A ray from the camera through the centre of pixel (x, y), or null
-        /// if the camera's transformation cannot be undone.
+        const Prepared = struct {
+            inverse: M,
+            origin: Point,
+            half_width: T,
+            half_height: T,
+            pixel_size: T,
+
+            fn init(camera: Self) CameraError!Prepared {
+                if (camera.hsize == 0 or camera.vsize == 0) return error.InvalidDimensions;
+                if (!std.math.isFinite(camera.field_of_view) or
+                    camera.field_of_view <= 0 or camera.field_of_view >= std.math.pi)
+                    return error.InvalidFieldOfView;
+                const inverse = camera.transform.inverse() catch return error.NonInvertibleCamera;
+                const half_width, const half_height = camera.halfExtents();
+                return .{
+                    .inverse = inverse,
+                    .origin = inverse.mulTuple(Point.point(0, 0, 0)),
+                    .half_width = half_width,
+                    .half_height = half_height,
+                    .pixel_size = half_width * 2 / @as(T, @floatFromInt(camera.hsize)),
+                };
+            }
+
+            fn rayForPixel(self: Prepared, x: usize, y: usize) Ray {
+                const world_x = self.half_width - (@as(T, @floatFromInt(x)) + 0.5) * self.pixel_size;
+                const world_y = self.half_height - (@as(T, @floatFromInt(y)) + 0.5) * self.pixel_size;
+                const pixel = self.inverse.mulTuple(Point.point(world_x, world_y, -1));
+                return Ray.init(self.origin, pixel.sub(self.origin).normalize());
+            }
+        };
+
+        pub const CameraError = error{ InvalidDimensions, InvalidFieldOfView, NonInvertibleCamera };
+        pub const RenderError = std.mem.Allocator.Error || Image.InitError || World.TraceError || CameraError;
+
         pub fn rayForPixel(self: Self, x: usize, y: usize) ?Ray {
-            const half_width, const half_height = self.halfExtents();
-            const pixel_size = self.pixelSize();
-
-            // The camera looks down -z, which puts +x on the left; offsets
-            // are therefore subtracted from the edge rather than added.
-            const world_x = half_width - (@as(T, @floatFromInt(x)) + 0.5) * pixel_size;
-            const world_y = half_height - (@as(T, @floatFromInt(y)) + 0.5) * pixel_size;
-
-            const inv = self.transform.inverse() catch return null;
-            const pixel = inv.mulTuple(Point.point(world_x, world_y, -1));
-            const origin = inv.mulTuple(Point.point(0, 0, 0));
-            return Ray.init(origin, pixel.sub(origin).normalize());
+            const prepared = Prepared.init(self) catch return null;
+            return prepared.rayForPixel(x, y);
         }
 
         /// Render `world` onto a fresh canvas. The caller owns the result.
@@ -83,7 +105,8 @@ pub fn Camera(comptime T: type) type {
             allocator: std.mem.Allocator,
             world: World,
             parent: std.Progress.Node,
-        ) std.mem.Allocator.Error!Image {
+        ) RenderError!Image {
+            const prepared = try Prepared.init(self);
             var image = try Image.init(allocator, self.hsize, self.vsize);
             errdefer image.deinit(allocator);
 
@@ -93,8 +116,8 @@ pub fn Camera(comptime T: type) type {
             for (0..self.vsize) |y| {
                 defer progress.completeOne();
                 for (0..self.hsize) |x| {
-                    const r = self.rayForPixel(x, y) orelse continue;
-                    image.writePixel(x, y, world.colorAt(r));
+                    const r = prepared.rayForPixel(x, y);
+                    image.writePixel(x, y, try world.colorAt(r));
                 }
             }
             return image;
@@ -161,6 +184,40 @@ test "a collapsed camera transformation casts no rays" {
     try testing.expect(c.rayForPixel(5, 5) == null);
 }
 
+test "render rejects invalid camera literals before allocating" {
+    const world: Cam.World = .{};
+    for ([_][2]usize{ .{ 0, 1 }, .{ 1, 0 }, .{ 0, 0 } }) |size| {
+        const c: Cam = .{ .hsize = size[0], .vsize = size[1], .field_of_view = pi / 2.0 };
+        try testing.expectError(error.InvalidDimensions, c.render(testing.failing_allocator, world, .none));
+        try testing.expect(c.rayForPixel(0, 0) == null);
+    }
+    for ([_]f64{ 0, -1, pi, pi + 1, std.math.inf(f64), -std.math.inf(f64), std.math.nan(f64) }) |fov| {
+        const c: Cam = .{ .hsize = 1, .vsize = 1, .field_of_view = fov };
+        try testing.expectError(error.InvalidFieldOfView, c.render(testing.failing_allocator, world, .none));
+        try testing.expect(c.rayForPixel(0, 0) == null);
+    }
+    var c = Cam.init(1, 1, pi / 2.0);
+    c.transform = Tf.scaling(0, 1, 1);
+    try testing.expectError(error.NonInvertibleCamera, c.render(testing.failing_allocator, world, .none));
+}
+
+test "prepared rays match individual rays across transformed canvases" {
+    for ([_][2]usize{ .{ 7, 3 }, .{ 3, 7 } }) |size| {
+        var c = Cam.init(size[0], size[1], pi / 3.0);
+        c.transform = Tf.rotationY(pi / 4.0).mul(Tf.translation(0, -2, 5));
+        const prepared = try Cam.Prepared.init(c);
+        try testing.expect(tuple.feq(f64, c.pixelSize(), prepared.pixel_size));
+        for (0..c.vsize) |y| {
+            for (0..c.hsize) |x| {
+                const expected = c.rayForPixel(x, y).?;
+                const actual = prepared.rayForPixel(x, y);
+                try testing.expect(expected.origin.eql(actual.origin));
+                try testing.expect(expected.direction.eql(actual.direction));
+            }
+        }
+    }
+}
+
 test "rendering a world with a camera" {
     const objects = [_]Sh{
         .{ .material = .{ .color = Col.init(0.8, 1.0, 0.6), .diffuse = 0.7, .specular = 0.2 } },
@@ -183,7 +240,9 @@ test "cameras cast rays at comptime" {
     comptime {
         @setEvalBranchQuota(50_000);
         const c = Cam.init(201, 101, pi / 2.0);
-        const r = c.rayForPixel(100, 50).?;
+        const prepared = try Cam.Prepared.init(c);
+        const r = prepared.rayForPixel(100, 50);
         try testing.expect(r.direction.eql(V.vector(0, 0, -1)));
+        try testing.expect(prepared.rayForPixel(0, 0).direction.eql(c.rayForPixel(0, 0).?.direction));
     }
 }

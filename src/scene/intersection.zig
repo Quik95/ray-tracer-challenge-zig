@@ -40,6 +40,7 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
         const Self = @This();
 
         pub const Scalar = T;
+        pub const PrepareError = error{ TargetAbsent, ContainerOverflow, NoSurface };
 
         /// How far along the ray the crossing is.
         t: T,
@@ -122,18 +123,18 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
         };
 
         /// How deeply objects may be nested before the pair of refractive
-        /// indices at a crossing stops being tracked exactly. Scenes put a
+        /// indices at a crossing returns an error. Scenes put a
         /// bubble inside a marble, not a hundred of them.
         const max_nesting = 16;
 
         /// Work out the shading vectors for this crossing of `r`, treating
-        /// the object as standing on its own in the scene.
+        /// the object as an isolated boundary between its material and vacuum.
         pub fn prepare(self: Self, r: Object.Ray) ?Computations {
-            return self.prepareAmong(r, &.{self});
+            return self.prepareSurface(r);
         }
 
-        /// Work out the shading vectors for this crossing of `r`, or null if
-        /// the object has no surface left to take a normal from.
+        /// Work out the shading vectors for this crossing of `r`, or an error
+        /// for a missing target, excessive nesting, or an absent surface.
         ///
         /// A hit from inside the object has its normal pointing away from the
         /// eye, which would shade the surface as though it faced away from
@@ -142,7 +143,15 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
         /// `xs` is every crossing of the same ray, sorted, which is what says
         /// which materials lie on either side of this one: an object already
         /// entered and not yet left is an object the crossing is inside of.
-        pub fn prepareAmong(self: Self, r: Object.Ray, xs: []const Self) ?Computations {
+        pub fn prepareAmong(self: Self, r: Object.Ray, xs: []const Self) PrepareError!Computations {
+            const media = try self.refractiveIndices(xs);
+            var comps = self.prepareSurface(r) orelse return error.NoSurface;
+            comps.n1 = media[0];
+            comps.n2 = media[1];
+            return comps;
+        }
+
+        fn prepareSurface(self: Self, r: Object.Ray) ?Computations {
             const point = r.position(self.t);
             const eye = r.direction.neg();
             const normal = self.object.normalAt(point) orelse return null;
@@ -151,7 +160,6 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
             const facing = if (inside) normal.neg() else normal;
             const offset = facing.mul(Object.Point.epsilon);
 
-            const media = self.refractiveIndices(xs);
             return .{
                 .t = self.t,
                 .object = self.object,
@@ -162,8 +170,8 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
                 .normal = facing,
                 .reflect = r.direction.reflect(facing),
                 .inside = inside,
-                .n1 = media[0],
-                .n2 = media[1],
+                .n1 = if (inside) self.object.material.refractive_index else 1,
+                .n2 = if (inside) 1 else self.object.material.refractive_index,
             };
         }
 
@@ -174,7 +182,7 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
         /// objects entered but not yet left gives the nesting: the innermost
         /// of them is the material the ray is travelling through. Empty
         /// means open air, which the tracer treats as a vacuum.
-        fn refractiveIndices(self: Self, xs: []const Self) [2]T {
+        fn refractiveIndices(self: Self, xs: []const Self) PrepareError![2]T {
             const vacuum: T = 1.0;
 
             var containers: [max_nesting]*const Object = undefined;
@@ -191,7 +199,8 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
                 if (found) |i| {
                     std.mem.copyForwards(*const Object, containers[i .. depth - 1], containers[i + 1 .. depth]);
                     depth -= 1;
-                } else if (depth < max_nesting) {
+                } else {
+                    if (depth == max_nesting) return error.ContainerOverflow;
                     containers[depth] = x.object;
                     depth += 1;
                 }
@@ -204,7 +213,7 @@ pub fn Intersection(comptime T: type, comptime Object: type) type {
 
             // The crossing is not among those given; nothing is known to
             // stand on either side of it.
-            return .{ vacuum, vacuum };
+            return error.TargetAbsent;
         }
 
         /// Order intersections by increasing t, nearest first.
@@ -228,6 +237,33 @@ const R = @import("ray.zig").R;
 const Tf = @import("../math/transform.zig").Tf;
 const V = @import("../math/tuple.zig").Tup;
 const feq = @import("../math/tuple.zig").feq;
+
+test "preparing an absent crossing reports an error" {
+    const s = Sh.glassSphere();
+    const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
+    try testing.expectError(error.TargetAbsent, X.init(4, &s).prepareAmong(r, &.{}));
+}
+
+test "preparing nested media rejects overflow but accepts exact capacity" {
+    var objects: [17]Sh = @splat(Sh.glassSphere());
+    var xs: [17]X = undefined;
+    for (&objects, &xs, 0..) |*object, *x, i| x.* = X.init(@floatFromInt(i + 1), object);
+    const r = R.init(V.point(0, 0, -20), V.vector(0, 0, 1));
+    const comps = try xs[15].prepareAmong(r, xs[0..16]);
+    try testing.expectEqual(@as(f64, 1.5), comps.n2);
+    try testing.expectError(error.ContainerOverflow, xs[16].prepareAmong(r, &xs));
+}
+
+test "an isolated glass exit leaves glass for vacuum" {
+    comptime {
+        @setEvalBranchQuota(100_000);
+        const s = Sh.glassSphere();
+        const r = R.init(V.point(0, 0, 0), V.vector(0, 0, 1));
+        const comps = X.init(1, &s).prepare(r).?;
+        try testing.expectEqual(@as(f64, 1.5), comps.n1);
+        try testing.expectEqual(@as(f64, 1), comps.n2);
+    }
+}
 
 test "an intersection encapsulates t and object" {
     const s = Sh.sphere();
@@ -304,7 +340,7 @@ test "the hit pushes a second point just under the surface" {
     var s = Sh.glassSphere();
     s.setTransform(Tf.translation(0, 0, 1));
     const i = X.init(5, &s);
-    const comps = i.prepareAmong(r, &.{i}).?;
+    const comps = try i.prepareAmong(r, &.{i});
 
     try testing.expect(comps.under_point.z() > V.epsilon / 2);
     try testing.expect(comps.point.z() < comps.under_point.z());
@@ -334,7 +370,7 @@ test "the materials on either side of nested crossings" {
         .{ 2.5, 2.5 }, .{ 2.5, 1.5 }, .{ 1.5, 1.0 },
     };
     for (xs, expected) |x, want| {
-        const comps = x.prepareAmong(r, &xs).?;
+        const comps = try x.prepareAmong(r, &xs);
         try testing.expectEqual(want[0], comps.n1);
         try testing.expectEqual(want[1], comps.n2);
     }
@@ -345,7 +381,7 @@ test "reflectance is total under total internal reflection" {
     const half_root_two = @sqrt(2.0) / 2.0;
     const r = R.init(V.point(0, 0, half_root_two), V.vector(0, 1, 0));
     const xs = [_]X{ X.init(-half_root_two, &s), X.init(half_root_two, &s) };
-    const comps = xs[1].prepareAmong(r, &xs).?;
+    const comps = try xs[1].prepareAmong(r, &xs);
     try testing.expectEqual(@as(f64, 1.0), comps.reflectance());
 }
 
@@ -353,7 +389,7 @@ test "reflectance is slight where the ray meets the surface head on" {
     const s = Sh.glassSphere();
     const r = R.init(V.point(0, 0, 0), V.vector(0, 1, 0));
     const xs = [_]X{ X.init(-1, &s), X.init(1, &s) };
-    const comps = xs[1].prepareAmong(r, &xs).?;
+    const comps = try xs[1].prepareAmong(r, &xs);
     try testing.expect(feq(f64, 0.04, comps.reflectance()));
 }
 
@@ -361,6 +397,6 @@ test "reflectance is significant where the ray grazes the surface" {
     const s = Sh.glassSphere();
     const r = R.init(V.point(0, 0.99, -2), V.vector(0, 0, 1));
     const xs = [_]X{X.init(1.8589, &s)};
-    const comps = xs[0].prepareAmong(r, &xs).?;
+    const comps = try xs[0].prepareAmong(r, &xs);
     try testing.expect(feq(f64, 0.48873, comps.reflectance()));
 }

@@ -26,9 +26,13 @@ pub fn Canvas(comptime Col: type) type {
         /// corner and y grows downwards, matching how image files are read.
         pixels: []Col,
 
+        pub const InitError = Allocator.Error || error{Overflow};
+
         /// A canvas of the given size, every pixel black.
-        pub fn init(allocator: Allocator, width: usize, height: usize) Allocator.Error!Self {
-            const pixels = try allocator.alloc(Col, width * height);
+        pub fn init(allocator: Allocator, width: usize, height: usize) InitError!Self {
+            const count = try std.math.mul(usize, width, height);
+            _ = try std.math.mul(usize, count, @sizeOf(Col));
+            const pixels = try allocator.alloc(Col, count);
             @memset(pixels, Col.black);
             return .{ .width = width, .height = height, .pixels = pixels };
         }
@@ -124,6 +128,18 @@ pub fn Canvas(comptime Col: type) type {
 pub const Image = Canvas(color.Col);
 
 // --- Tests ------------------------------------------------------------------
+
+test "canvas rejects pixel count and allocation byte overflow" {
+    inline for (.{ f32, f64 }) |T| {
+        const P = Canvas(color.Color(T));
+        const max = std.math.maxInt(usize);
+        try testing.expectError(error.Overflow, P.init(testing.allocator, max, 2));
+        try testing.expectError(error.Overflow, P.init(testing.allocator, max / @sizeOf(P.Pixel) + 1, 1));
+        var empty = try P.init(testing.allocator, max, 0);
+        defer empty.deinit(testing.allocator);
+        try testing.expectEqual(0, empty.pixels.len);
+    }
+}
 
 const testing = std.testing;
 const C = color.Col;

@@ -177,5 +177,5 @@ test "one of the balls is glass, and shows the room through it" {
     // near-black surface on it.
     const w = Default.world(&objects);
     const r = @import("../scene/ray.zig").R.init(tuple.Tup.point(1.5, 0.5, -5), tuple.Tup.vector(0, 0, 1));
-    try testing.expect(!w.colorAt(r).eql(glass.color));
+    try testing.expect(!(try w.colorAt(r)).eql(glass.color));
 }
