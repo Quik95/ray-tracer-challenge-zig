@@ -5,6 +5,8 @@
 //! following hour is a twelfth of a turn about y away from it.
 
 const std = @import("std");
+const canvas = @import("../render/canvas.zig");
+const color = @import("../render/color.zig");
 const transform = @import("../math/transform.zig");
 const tuple = @import("../math/tuple.zig");
 
@@ -75,4 +77,71 @@ test "the face can be laid out at comptime" {
         try testing.expect(marks[0].eql(V.point(0, 0, 1)));
         try testing.expect(marks[3].eql(V.point(1, 0, 0)));
     }
+}
+
+/// The face, drawn: the twelve marks placed on a canvas.
+///
+/// The face is looked at down the y axis, so the mark's x runs across the
+/// canvas and its z runs up it, and the whole face is scaled to sit inside
+/// whichever of the two canvas dimensions is smaller.
+pub fn Face(comptime T: type) type {
+    return struct {
+        pub const C = color.Color(T);
+        pub const Image = canvas.Canvas(C);
+        pub const Marks = Clock(T);
+
+        pub const name = "clock";
+        pub const group = "canvas";
+
+        pub const ink: C = .init(1, 0.9, 0.6);
+
+        /// How much of the canvas the face spans, leaving a margin for the
+        /// marks themselves, which are drawn as blocks around their point.
+        const fill = 0.375;
+
+        pub fn draw(image: Image) void {
+            const across: T = @floatFromInt(image.width);
+            const down: T = @floatFromInt(image.height);
+            const radius = fill * @min(across, down);
+            const side = @max(1, @min(image.width, image.height) / 60);
+
+            for (Marks.positions()) |mark| {
+                // The canvas counts y downwards, so the top of the face —
+                // twelve o'clock, at positive z — is the smaller row number.
+                const x: isize = @intFromFloat(across / 2 + mark.x() * radius);
+                const y: isize = @intFromFloat(down / 2 - mark.z() * radius);
+                image.plotSquare(x, y, side, ink);
+            }
+        }
+    };
+}
+
+pub const DefaultFace = Face(f64);
+
+test "the twelve marks land on a circle around the middle of the canvas" {
+    var image = try DefaultFace.Image.init(testing.allocator, 100, 100);
+    defer image.deinit(testing.allocator);
+    DefaultFace.draw(image);
+
+    var drawn: usize = 0;
+    for (0..image.height) |y| for (0..image.width) |x| {
+        if (image.pixelAt(x, y).eql(DefaultFace.C.black)) continue;
+        drawn += 1;
+        const dx: f64 = @as(f64, @floatFromInt(x)) - 50;
+        const dy: f64 = @as(f64, @floatFromInt(y)) - 50;
+        // Every lit pixel sits on the rim, a block's width either side of it.
+        try testing.expectApproxEqAbs(37.5, @sqrt(dx * dx + dy * dy), 2);
+    };
+    try testing.expect(drawn >= Default.hours);
+    // The middle of the face stays empty.
+    try testing.expect(image.pixelAt(50, 50).eql(DefaultFace.C.black));
+}
+
+test "twelve o'clock is at the top and three o'clock to the right" {
+    var image = try DefaultFace.Image.init(testing.allocator, 100, 100);
+    defer image.deinit(testing.allocator);
+    DefaultFace.draw(image);
+
+    try testing.expect(!image.pixelAt(50, 12).eql(DefaultFace.C.black));
+    try testing.expect(!image.pixelAt(87, 50).eql(DefaultFace.C.black));
 }
