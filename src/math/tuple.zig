@@ -148,6 +148,13 @@ pub fn Tuple(comptime T: type) type {
             return .{ .v = a_yzx * b_zxy - a_zxy * b_yzx };
         }
 
+        /// Bounce this vector off a surface with the given normal, the way a
+        /// ball thrown at the ground comes back up: the component along the
+        /// normal is reversed, and everything across it is left alone.
+        pub fn reflect(self: Self, normal: Self) Self {
+            return self.sub(normal.mul(2 * self.dot(normal)));
+        }
+
         pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             try writer.print("({d}, {d}, {d}, {d})", .{ self.x(), self.y(), self.z(), self.w() });
         }
@@ -310,5 +317,25 @@ test "tuple arithmetic is available at comptime" {
         try testing.expect(moved.eql(V.point(1, 1, 6)));
         try testing.expect(moved.isPoint());
         try testing.expect(feq(f64, V.vector(1, 2, 3).normalize().magnitude(), 1));
+    }
+}
+
+test "reflecting a vector approaching at 45 degrees" {
+    const v = Tup.vector(1, -1, 0);
+    const n = Tup.vector(0, 1, 0);
+    try testing.expect(v.reflect(n).eql(Tup.vector(1, 1, 0)));
+}
+
+test "reflecting a vector off a slanted surface" {
+    const half_root_two = @sqrt(2.0) / 2.0;
+    const v = Tup.vector(0, -1, 0);
+    const n = Tup.vector(half_root_two, half_root_two, 0);
+    try testing.expect(v.reflect(n).eql(Tup.vector(1, 0, 0)));
+}
+
+test "vectors reflect at comptime" {
+    comptime {
+        const v = Tup.vector(1, -1, 0);
+        try testing.expect(v.reflect(Tup.vector(0, 1, 0)).eql(Tup.vector(1, 1, 0)));
     }
 }

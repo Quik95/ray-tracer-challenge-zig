@@ -1,4 +1,5 @@
-//! Casts a ray at a sphere for every pixel and draws its silhouette.
+//! Casts a ray at a sphere for every pixel and shades what it hits, turning
+//! the sphere's silhouette into a lit, three-dimensional ball.
 //!
 //! The image size comes from the command line: `SIZE` for a square, or
 //! `WIDTHxHEIGHT` (equivalently `WIDTH HEIGHT`) for anything else.
@@ -15,7 +16,7 @@ const rt = @import("ray_tracing_challange_zig");
 const V = rt.Tup;
 const C = rt.Col;
 
-const file_name = "silhouette.ppm";
+const file_name = "sphere.ppm";
 
 /// The eye, the wall the sphere's shadow falls on, and how much of that wall
 /// the image covers. The wall is far enough back and wide enough that a unit
@@ -23,6 +24,10 @@ const file_name = "silhouette.ppm";
 const ray_origin = V.point(0, 0, -5);
 const wall_z = 10.0;
 const wall_size = 7.0;
+
+/// A white light behind, above, and to the left of the eye, so the highlight
+/// lands off-centre and the sphere reads as round.
+const light = rt.Light.init(V.point(-10, 10, -10), C.init(1, 1, 1));
 
 const Size = struct {
     width: usize,
@@ -87,9 +92,8 @@ pub fn main(init: std.process.Init) !void {
     var image = try rt.Image.init(gpa, size.width, size.height);
     defer image.deinit(gpa);
 
-    const shape: rt.S = .{};
-    const lit = C.init(1, 0.2, 0.25);
-    const hits = cast(image, shape, lit);
+    const shape: rt.S = .{ .material = .{ .color = C.init(1, 0.2, 1) } };
+    const hits = cast(image, shape);
 
     const stdout: Io.File = .stdout();
     const piped = !try stdout.isTty(io);
@@ -146,12 +150,12 @@ fn parseDimension(text: []const u8) ParseError!usize {
 }
 
 /// Cast one ray per pixel from the eye through that pixel's point on the
-/// wall, colouring the pixel wherever the ray reaches the sphere. Returns how
+/// wall, shading the pixel wherever the ray reaches the sphere. Returns how
 /// many rays hit.
 ///
 /// World y grows upwards and canvas y downwards, so the rows are walked from
 /// the top of the wall down.
-fn cast(image: rt.Image, shape: rt.S, c: C) usize {
+fn cast(image: rt.Image, shape: rt.S) usize {
     const size: Size = .{ .width = image.width, .height = image.height };
     const pixel_x, const pixel_y = size.pixelSize();
     const half = wall_size / 2.0;
@@ -165,8 +169,14 @@ fn cast(image: rt.Image, shape: rt.S, c: C) usize {
             const r = rt.R.init(ray_origin, target.sub(ray_origin).normalize());
 
             const xs = shape.intersect(r) orelse continue;
-            if (rt.S.Hit.hit(&xs) == null) continue;
-            image.writePixel(x, y, c);
+            const hit = rt.S.Hit.hit(&xs) orelse continue;
+
+            // Shade the surface where the ray first reaches it, looking back
+            // along the ray towards the eye.
+            const point = r.position(hit.t);
+            const normal = hit.object.normalAt(point) orelse continue;
+            const eye = r.direction.neg();
+            image.writePixel(x, y, hit.object.material.lighting(light, point, eye, normal));
             hits += 1;
         }
     }

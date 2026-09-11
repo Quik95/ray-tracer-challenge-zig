@@ -15,6 +15,8 @@ pub const transform = @import("math/transform.zig");
 pub const ray = @import("scene/ray.zig");
 pub const intersection = @import("scene/intersection.zig");
 pub const sphere = @import("scene/sphere.zig");
+pub const light = @import("scene/light.zig");
+pub const material = @import("scene/material.zig");
 
 // Pixels, and getting them out of the program.
 pub const color = @import("render/color.zig");
@@ -62,6 +64,16 @@ pub const Sphere = sphere.Sphere;
 /// The sphere at the precision the ray tracer uses.
 pub const S = sphere.S;
 
+/// Generic point light, parameterized by float type.
+pub const PointLight = light.PointLight;
+/// The point light at the precision the ray tracer uses.
+pub const Light = light.Light;
+
+/// Generic surface material, parameterized by float type.
+pub const Material = material.Material;
+/// The material at the precision the ray tracer uses.
+pub const Mat = material.Mat;
+
 /// Generic pixel grid, parameterized by color type.
 pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
@@ -78,6 +90,8 @@ const covered_sources = [_][]const u8{
     "scene/ray.zig",
     "scene/intersection.zig",
     "scene/sphere.zig",
+    "scene/light.zig",
+    "scene/material.zig",
     "render/color.zig",
     "render/canvas.zig",
     "demo/projectile.zig",
@@ -97,6 +111,8 @@ test {
     _ = ray;
     _ = intersection;
     _ = sphere;
+    _ = light;
+    _ = material;
 }
 
 test "every file in src/ is imported here" {

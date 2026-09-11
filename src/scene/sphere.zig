@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const intersection = @import("intersection.zig");
+const material = @import("material.zig");
 const matrix = @import("../math/matrix.zig");
 const ray = @import("ray.zig");
 const tuple = @import("../math/tuple.zig");
@@ -20,6 +21,7 @@ pub fn Sphere(comptime T: type) type {
         pub const M = matrix.Matrix(T, 4);
         pub const Ray = ray.Ray(T);
         pub const Hit = intersection.Intersection(T, Self);
+        pub const Mat = material.Material(T);
         pub const Scalar = T;
 
         /// Distinguishes one sphere from another in output; intersections
@@ -28,6 +30,8 @@ pub fn Sphere(comptime T: type) type {
         /// Object space to world space. The identity leaves a unit sphere at
         /// the origin.
         transform: M = M.identity,
+        /// What the surface is made of, and how it answers light.
+        material: Mat = .{},
 
         var next_id: usize = 0;
 
@@ -38,6 +42,30 @@ pub fn Sphere(comptime T: type) type {
 
         pub fn setTransform(self: *Self, m: M) void {
             self.transform = m;
+        }
+
+        pub fn setMaterial(self: *Self, m: Mat) void {
+            self.material = m;
+        }
+
+        /// The unit vector perpendicular to the surface at a world-space
+        /// point on it, or null if the sphere has been collapsed to nothing.
+        ///
+        /// In object space the normal is simply the point itself, the arrow
+        /// from the centre outwards. Carrying that back to world space takes
+        /// the inverse *transpose*: multiplying by the transform alone would
+        /// tilt the normal off the surface wherever the object is scaled
+        /// unevenly.
+        pub fn normalAt(self: *const Self, world_point: Point) ?Point {
+            const inv = self.transform.inverse() catch return null;
+            const object_point = inv.mulTuple(world_point);
+            const object_normal = object_point.sub(Point.point(0, 0, 0));
+
+            var world_normal = inv.transpose().mulTuple(object_normal);
+            // A translation in the transform leaks into w through the
+            // transpose; clearing it keeps the result a vector.
+            world_normal.v[@intFromEnum(tuple.Axis.w)] = 0;
+            return world_normal.normalize();
         }
 
         /// Where the ray crosses the sphere, nearest first, or null if it
@@ -180,5 +208,67 @@ test "spheres can be intersected at comptime" {
         const xs = s.intersect(r).?;
         try testing.expect(tuple.feq(f64, xs[0].t, 3));
         try testing.expect(S.Hit.hit(&xs).?.t == 3);
+    }
+}
+
+test "the normal on a sphere at a point on each axis" {
+    const s = S.init();
+    try testing.expect(s.normalAt(V.point(1, 0, 0)).?.eql(V.vector(1, 0, 0)));
+    try testing.expect(s.normalAt(V.point(0, 1, 0)).?.eql(V.vector(0, 1, 0)));
+    try testing.expect(s.normalAt(V.point(0, 0, 1)).?.eql(V.vector(0, 0, 1)));
+}
+
+test "the normal at a nonaxial point" {
+    const k = @sqrt(3.0) / 3.0;
+    const s = S.init();
+    const n = s.normalAt(V.point(k, k, k)).?;
+    try testing.expect(n.eql(V.vector(k, k, k)));
+}
+
+test "the normal is a normalized vector" {
+    const k = @sqrt(3.0) / 3.0;
+    const s = S.init();
+    const n = s.normalAt(V.point(k, k, k)).?;
+    try testing.expect(n.eql(n.normalize()));
+}
+
+test "the normal on a translated sphere" {
+    var s = S.init();
+    s.setTransform(Tf.translation(0, 1, 0));
+    const n = s.normalAt(V.point(0, 1.70711, -0.70711)).?;
+    try testing.expect(n.eql(V.vector(0, 0.70711, -0.70711)));
+}
+
+test "the normal on a scaled and rotated sphere" {
+    var s = S.init();
+    s.setTransform(Tf.scaling(1, 0.5, 1).mul(Tf.rotationZ(std.math.pi / 5.0)));
+    const half_root_two = @sqrt(2.0) / 2.0;
+    const n = s.normalAt(V.point(0, half_root_two, -half_root_two)).?;
+    try testing.expect(n.eql(V.vector(0, 0.97014, -0.24254)));
+}
+
+test "a collapsed sphere has no normal" {
+    const s: S = .{ .transform = Tf.scaling(0, 0, 0) };
+    try testing.expect(s.normalAt(V.point(1, 0, 0)) == null);
+}
+
+test "a sphere has a default material" {
+    const s = S.init();
+    try testing.expect(s.material.eql(.{}));
+}
+
+test "a sphere may be assigned a material" {
+    var s = S.init();
+    const m: S.Mat = .{ .ambient = 1 };
+    s.setMaterial(m);
+    try testing.expect(s.material.eql(m));
+}
+
+test "normals are computed at comptime" {
+    comptime {
+        @setEvalBranchQuota(20_000);
+        const s: S = .{ .transform = Tf.translation(0, 1, 0) };
+        const n = s.normalAt(V.point(0, 2, 0)).?;
+        try testing.expect(n.eql(V.vector(0, 1, 0)));
     }
 }
