@@ -114,12 +114,74 @@ pub fn Camera(comptime T: type) type {
             defer progress.end();
 
             for (0..self.vsize) |y| {
-                defer progress.completeOne();
-                for (0..self.hsize) |x| {
-                    const r = prepared.rayForPixel(x, y);
-                    image.writePixel(x, y, try world.colorAt(r));
-                }
+                try renderRow(prepared, world, image, y);
+                progress.completeOne();
             }
+            return image;
+        }
+
+        fn renderRow(prepared: Prepared, world: World, image: Image, y: usize) World.TraceError!void {
+            for (0..image.width) |x| {
+                image.writePixel(x, y, try world.colorAt(prepared.rayForPixel(x, y)));
+            }
+        }
+
+        fn renderWorker(
+            prepared: Prepared,
+            world: World,
+            image: Image,
+            next_row: *std.atomic.Value(usize),
+            progress: std.Progress.Node,
+        ) World.TraceError!void {
+            while (true) {
+                const y = next_row.fetchAdd(1, .monotonic);
+                if (y >= image.height) return;
+                try renderRow(prepared, world, image, y);
+                progress.completeOne();
+            }
+        }
+
+        pub fn renderParallel(
+            self: Self,
+            allocator: std.mem.Allocator,
+            io: std.Io,
+            world: World,
+            parent: std.Progress.Node,
+            worker_count: usize,
+        ) RenderError!Image {
+            const prepared = try Prepared.init(self);
+            const count = @min(self.vsize, @max(1, if (worker_count == 0)
+                std.Thread.getCpuCount() catch 1
+            else
+                worker_count));
+            if (count == 1) return self.render(allocator, world, parent);
+
+            var image = try Image.init(allocator, self.hsize, self.vsize);
+            errdefer image.deinit(allocator);
+            const futures = try allocator.alloc(std.Io.Future(World.TraceError!void), count - 1);
+            defer allocator.free(futures);
+
+            const progress = parent.start("rows", self.vsize);
+            defer progress.end();
+            var next_row: std.atomic.Value(usize) = .init(0);
+            var started: usize = 0;
+            defer for (futures[0..started]) |*future| {
+                future.await(io) catch {};
+            };
+            for (futures) |*future| {
+                future.* = io.concurrent(renderWorker, .{ prepared, world, image, &next_row, progress }) catch break;
+                started += 1;
+            }
+            var failure: ?World.TraceError = null;
+            renderWorker(prepared, world, image, &next_row, progress) catch |err| {
+                failure = err;
+            };
+            for (futures[0..started]) |*future| {
+                future.await(io) catch |err| {
+                    failure = err;
+                };
+            }
+            if (failure) |err| return err;
             return image;
         }
     };
@@ -234,6 +296,57 @@ test "rendering a world with a camera" {
     var image = try c.render(testing.allocator, world, .none);
     defer image.deinit(testing.allocator);
     try testing.expect(image.pixelAt(5, 5).eql(Col.init(0.38066, 0.47583, 0.2855)));
+}
+
+test "parallel rendering matches every serial pixel" {
+    var threaded = std.Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+    inline for (.{ f32, f64 }) |T| {
+        const Scene = @import("../demo/cubes.zig").Scene(T);
+        const objects = Scene.objects();
+        const world = Scene.world(&objects);
+        for ([_][2]usize{ .{ 13, 7 }, .{ 1, 5 }, .{ 5, 1 } }) |size| {
+            const camera = Scene.camera(size[0], size[1]);
+            var serial = try camera.render(testing.allocator, world, .none);
+            defer serial.deinit(testing.allocator);
+            for ([_]usize{ 0, 1, 2, 4, 32 }) |workers| {
+                var parallel = try camera.renderParallel(testing.allocator, threaded.io(), world, .none, workers);
+                defer parallel.deinit(testing.allocator);
+                for (serial.pixels, parallel.pixels) |expected, actual| {
+                    try testing.expectEqualDeep(expected, actual);
+                }
+            }
+        }
+    }
+}
+
+test "parallel rendering falls back when concurrency is unavailable" {
+    var threaded = std.Io.Threaded.init(testing.allocator, .{ .concurrent_limit = .nothing });
+    defer threaded.deinit();
+    const camera = Cam.init(3, 5, pi / 2.0);
+    var image = try camera.renderParallel(testing.allocator, threaded.io(), .{}, .none, 4);
+    defer image.deinit(testing.allocator);
+    for (image.pixels) |pixel| try testing.expect(pixel.eql(Col.black));
+}
+
+test "parallel rendering propagates trace and allocation errors" {
+    var threaded = std.Io.Threaded.init(testing.allocator, .{});
+    defer threaded.deinit();
+    var camera = Cam.init(3, 5, pi / 2.0);
+    camera.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
+    const objects = [_]Sh{.{}} ** (Cam.World.max_intersections / 2 + 1);
+    try testing.expectError(error.IntersectionOverflow, camera.renderParallel(
+        testing.allocator,
+        threaded.io(),
+        .{ .objects = &objects },
+        .none,
+        3,
+    ));
+    try testing.expectError(error.OutOfMemory, camera.renderParallel(testing.failing_allocator, threaded.io(), .{}, .none, 3));
+    var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 1 });
+    try testing.expectError(error.OutOfMemory, camera.renderParallel(failing.allocator(), threaded.io(), .{}, .none, 3));
+    camera.hsize = 0;
+    try testing.expectError(error.InvalidDimensions, camera.renderParallel(testing.failing_allocator, threaded.io(), .{}, .none, 3));
 }
 
 test "cameras cast rays at comptime" {

@@ -74,7 +74,7 @@ pub fn main(init: std.process.Init) !void {
     const progress = std.Progress.start(io, .{ .root_name = "rendering" });
     defer progress.end();
 
-    var image = try camera.render(gpa, world, progress);
+    var image = try camera.renderParallel(gpa, io, world, progress, 0);
     defer image.deinit(gpa);
 
     const stdout: Io.File = .stdout();
