@@ -75,15 +75,23 @@ pub fn Camera(comptime T: type) type {
         }
 
         /// Render `world` onto a fresh canvas. The caller owns the result.
+        ///
+        /// One row is one unit of progress under `parent`; pass
+        /// `std.Progress.Node.none` to render silently.
         pub fn render(
             self: Self,
             allocator: std.mem.Allocator,
             world: World,
+            parent: std.Progress.Node,
         ) std.mem.Allocator.Error!Image {
             var image = try Image.init(allocator, self.hsize, self.vsize);
             errdefer image.deinit(allocator);
 
+            const progress = parent.start("rows", self.vsize);
+            defer progress.end();
+
             for (0..self.vsize) |y| {
+                defer progress.completeOne();
                 for (0..self.hsize) |x| {
                     const r = self.rayForPixel(x, y) orelse continue;
                     image.writePixel(x, y, world.colorAt(r));
@@ -166,7 +174,7 @@ test "rendering a world with a camera" {
     var c = Cam.init(11, 11, pi / 2.0);
     c.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
 
-    var image = try c.render(testing.allocator, world);
+    var image = try c.render(testing.allocator, world, .none);
     defer image.deinit(testing.allocator);
     try testing.expect(image.pixelAt(5, 5).eql(Col.init(0.38066, 0.47583, 0.2855)));
 }

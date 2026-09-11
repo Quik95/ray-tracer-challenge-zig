@@ -72,7 +72,12 @@ pub fn main(init: std.process.Init) !void {
     const world = Scene.world(&objects);
     const camera = Scene.camera(size.width, size.height);
 
-    var image = try camera.render(gpa, world);
+    // The bar goes to the terminal, so it stays out of a redirected image and
+    // disappears on its own when the output is not a terminal at all.
+    const progress = std.Progress.start(io, .{ .root_name = "rendering" });
+    defer progress.end();
+
+    var image = try camera.render(gpa, world, progress);
     defer image.deinit(gpa);
 
     const stdout: Io.File = .stdout();
