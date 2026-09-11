@@ -37,6 +37,7 @@ pub const spheres = @import("demo/spheres.zig");
 pub const cubes = @import("demo/cubes.zig");
 pub const cylinders = @import("demo/cylinders.zig");
 pub const room = @import("demo/room.zig");
+pub const planes = @import("demo/planes.zig");
 pub const sphere_cast = @import("demo/sphere_cast.zig");
 
 /// Generic 4-tuple, parameterized by float type.
@@ -161,6 +162,7 @@ const covered_sources = [_][]const u8{
     "demo/cubes.zig",
     "demo/cylinders.zig",
     "demo/room.zig",
+    "demo/planes.zig",
     "demo/sphere_cast.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
@@ -191,6 +193,7 @@ test {
     _ = cubes;
     _ = cylinders;
     _ = room;
+    _ = planes;
     _ = sphere_cast;
 }
 
