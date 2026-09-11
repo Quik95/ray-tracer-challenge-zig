@@ -26,6 +26,7 @@ pub fn Scene(comptime T: type) type {
         pub const World = world_mod.World(T);
         pub const Pattern = pattern_mod.Pattern(T);
 
+        pub const name = "spheres";
         pub const object_count = 5;
 
         /// The surface the room is made of: matte, and just polished enough

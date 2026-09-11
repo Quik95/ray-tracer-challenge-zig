@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const intersection = @import("intersection.zig");
+const cube_mod = @import("cube.zig");
 const material = @import("material.zig");
 const matrix = @import("../math/matrix.zig");
 const plane_mod = @import("plane.zig");
@@ -35,6 +36,7 @@ pub fn Shape(comptime T: type) type {
         pub const Geometry = union(enum) {
             sphere: sphere_mod.Sphere(T),
             plane: plane_mod.Plane(T),
+            cube: cube_mod.Cube(T),
         };
 
         /// The most crossings any of them can report.
@@ -89,6 +91,10 @@ pub fn Shape(comptime T: type) type {
 
         /// A sphere of glass: clear through, and bending light as glass
         /// does. Scenes want a marble often enough to name one.
+        pub fn cube() Self {
+            return init(.{ .cube = .{} });
+        }
+
         pub fn glassSphere() Self {
             var self = sphere();
             self.material.transparency = 1.0;
@@ -278,4 +284,17 @@ test "a glass sphere is clear and bends light" {
     try testing.expect(s.transform.eql(Sh.M.identity));
     try testing.expectEqual(@as(f64, 1.0), s.material.transparency);
     try testing.expectEqual(@as(f64, 1.5), s.material.refractive_index);
+}
+
+test "a transformed cube is met where it now stands" {
+    // Widened and pushed aside, so a ray down the x axis enters its near face.
+    const s: Sh = .{
+        .geometry = .{ .cube = .{} },
+        .transform = Tf.chain().scale(2, 1, 1).translate(4, 0, 0).m,
+    };
+    const xs = s.intersect(R.init(V.point(-5, 0, 0), V.vector(1, 0, 0)));
+    try testing.expectEqual(@as(usize, 2), xs.len);
+    try testing.expectEqual(@as(f64, 7), xs.items()[0].t);
+    try testing.expectEqual(@as(f64, 11), xs.items()[1].t);
+    try testing.expect(s.normalAt(V.point(2, 0, 0)).?.eql(V.vector(-1, 0, 0)));
 }

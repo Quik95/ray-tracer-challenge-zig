@@ -16,6 +16,7 @@ pub const ray = @import("scene/ray.zig");
 pub const intersection = @import("scene/intersection.zig");
 pub const sphere = @import("scene/sphere.zig");
 pub const plane = @import("scene/plane.zig");
+pub const cube = @import("scene/cube.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
@@ -31,6 +32,7 @@ pub const camera = @import("render/camera.zig");
 pub const projectile = @import("demo/projectile.zig");
 pub const clock = @import("demo/clock.zig");
 pub const spheres = @import("demo/spheres.zig");
+pub const cubes = @import("demo/cubes.zig");
 
 /// Generic 4-tuple, parameterized by float type.
 pub const Tuple = tuple.Tuple;
@@ -74,6 +76,11 @@ pub const S = sphere.S;
 pub const Plane = plane.Plane;
 /// The plane geometry at the precision the ray tracer uses.
 pub const P = plane.P;
+
+/// Generic axis-aligned cube geometry, parameterized by float type.
+pub const Cube = cube.Cube;
+/// The cube geometry at the precision the ray tracer uses.
+pub const Cb = cube.C;
 
 /// Generic shape: a geometry placed in the world, and its material.
 pub const Shape = shape.Shape;
@@ -122,6 +129,7 @@ const covered_sources = [_][]const u8{
     "scene/intersection.zig",
     "scene/sphere.zig",
     "scene/plane.zig",
+    "scene/cube.zig",
     "scene/shape.zig",
     "scene/light.zig",
     "scene/material.zig",
@@ -133,6 +141,7 @@ const covered_sources = [_][]const u8{
     "demo/projectile.zig",
     "demo/clock.zig",
     "demo/spheres.zig",
+    "demo/cubes.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
 };
@@ -149,6 +158,7 @@ test {
     _ = intersection;
     _ = sphere;
     _ = plane;
+    _ = cube;
     _ = shape;
     _ = light;
     _ = material;
@@ -156,6 +166,7 @@ test {
     _ = world;
     _ = camera;
     _ = spheres;
+    _ = cubes;
 }
 
 test "every file in src/ is imported here" {

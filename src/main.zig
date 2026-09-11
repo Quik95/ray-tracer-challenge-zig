@@ -1,4 +1,4 @@
-//! Renders a scene of three spheres standing in a corner, one ray per pixel.
+//! Renders a room furnished with cubes, one ray per pixel.
 //!
 //! The image size comes from the command line: `SIZE` for a square, or
 //! `WIDTHxHEIGHT` (equivalently `WIDTH HEIGHT`) for anything else.
@@ -12,9 +12,9 @@ const std = @import("std");
 const Io = std.Io;
 
 const rt = @import("ray_tracing_challange_zig");
-const Scene = rt.spheres.Default;
+const Scene = rt.cubes.Default;
 
-const file_name = "spheres.ppm";
+const file_name = Scene.name ++ ".ppm";
 
 const Size = struct {
     width: usize,
@@ -23,12 +23,9 @@ const Size = struct {
     const default: Size = .{ .width = 400, .height = 200 };
 };
 
-const usage =
-    \\usage: spheres [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT]
-    \\
-    \\Renders the scene at the given size in pixels (default 400x200).
-    \\
-;
+const usage = "usage: " ++ Scene.name ++ " [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT]\n" ++
+    "\n" ++
+    "Renders the scene at the given size in pixels (default 400x200).\n";
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -54,7 +51,7 @@ pub fn main(init: std.process.Init) !void {
     const size = parseSize(argv.items) catch |err| {
         var buffer: [1024]u8 = undefined;
         var stderr: Io.File.Writer = .init(.stderr(), io, &buffer);
-        try stderr.interface.print("spheres: {s}\n{s}", .{
+        try stderr.interface.print(Scene.name ++ ": {s}\n{s}", .{
             switch (err) {
                 error.NotANumber => "sizes must be whole numbers of pixels",
                 error.ZeroSize => "both dimensions must be at least one pixel",
