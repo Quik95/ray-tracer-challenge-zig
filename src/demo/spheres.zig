@@ -27,6 +27,7 @@ pub fn Scene(comptime T: type) type {
         pub const Pattern = pattern_mod.Pattern(T);
 
         pub const name = "spheres";
+        pub const group = "scenes";
         pub const object_count = 5;
 
         /// The surface the room is made of: matte, and just polished enough

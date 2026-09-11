@@ -29,6 +29,7 @@ pub fn Scene(comptime T: type) type {
         pub const Pattern = pattern_mod.Pattern(T);
 
         pub const name = "cylinders";
+        pub const group = "shapes";
 
         /// Where the columns stand: two rows, three deep.
         const column_x = 2.6;

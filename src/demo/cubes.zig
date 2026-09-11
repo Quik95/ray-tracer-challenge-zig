@@ -29,6 +29,7 @@ pub fn Scene(comptime T: type) type {
         pub const Pattern = pattern_mod.Pattern(T);
 
         pub const name = "cubes";
+        pub const group = "shapes";
         pub const object_count = 11;
 
         /// Half the room's width and depth, and its full height. The room
