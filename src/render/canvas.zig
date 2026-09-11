@@ -71,6 +71,18 @@ pub fn Canvas(comptime Col: type) type {
             return true;
         }
 
+        /// Colour a square of `side` pixels centred on (x, y), clipped to the
+        /// canvas. A single pixel is invisible in a large image, so points
+        /// plotted from world coordinates are drawn as small blocks instead.
+        pub fn plotSquare(self: Self, x: isize, y: isize, side: usize, c: Col) void {
+            const half: isize = @intCast(side / 2);
+            var dy: isize = -half;
+            while (dy <= half) : (dy += 1) {
+                var dx: isize = -half;
+                while (dx <= half) : (dx += 1) _ = self.plot(x + dx, y + dy, c);
+            }
+        }
+
         pub fn pixelAt(self: Self, x: usize, y: usize) Col {
             return self.pixels[self.indexOf(x, y)];
         }
@@ -260,4 +272,19 @@ test "a zero-height canvas still produces a valid header" {
     defer testing.allocator.free(ppm);
 
     try testing.expectEqualStrings("P3\n5 0\n255\n", ppm);
+}
+
+test "a plotted square is centred on its point and clipped at the edges" {
+    var c = try Image.init(testing.allocator, 5, 5);
+    defer c.deinit(testing.allocator);
+
+    c.plotSquare(2, 2, 3, color.Col.white);
+    try testing.expect(c.pixelAt(2, 2).eql(color.Col.white));
+    try testing.expect(c.pixelAt(1, 1).eql(color.Col.white));
+    try testing.expect(c.pixelAt(3, 3).eql(color.Col.white));
+    try testing.expect(c.pixelAt(0, 0).eql(color.Col.black));
+
+    // A square hanging off the corner keeps the part that lands.
+    c.plotSquare(0, 0, 3, color.Col.white);
+    try testing.expect(c.pixelAt(0, 0).eql(color.Col.white));
 }
