@@ -19,6 +19,7 @@ pub const plane = @import("scene/plane.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
+pub const pattern = @import("scene/pattern.zig");
 pub const world = @import("scene/world.zig");
 
 // Pixels, and getting them out of the program.
@@ -89,6 +90,11 @@ pub const Material = material.Material;
 /// The material at the precision the ray tracer uses.
 pub const Mat = material.Mat;
 
+/// Generic surface pattern, parameterized by float type.
+pub const Pattern = pattern.Pattern;
+/// The pattern at the precision the ray tracer uses.
+pub const Pat = pattern.Pat;
+
 /// Generic world of objects and a light, parameterized by float type.
 pub const World = world.World;
 /// The world at the precision the ray tracer uses.
@@ -119,6 +125,7 @@ const covered_sources = [_][]const u8{
     "scene/shape.zig",
     "scene/light.zig",
     "scene/material.zig",
+    "scene/pattern.zig",
     "scene/world.zig",
     "render/color.zig",
     "render/canvas.zig",
@@ -145,6 +152,7 @@ test {
     _ = shape;
     _ = light;
     _ = material;
+    _ = pattern;
     _ = world;
     _ = camera;
     _ = spheres;

@@ -95,6 +95,13 @@ pub fn Shape(comptime T: type) type {
             self.material = m;
         }
 
+        /// A world-space point in this shape's own coordinates, or null if
+        /// the transformation has no inverse to carry the point back along.
+        pub fn localPoint(self: *const Self, world_point: Point) ?Point {
+            const inv = self.transform.inverse() catch return null;
+            return inv.mulTuple(world_point);
+        }
+
         /// A world-space ray in this shape's own coordinates, or null if the
         /// transformation has collapsed the shape to nothing and so has no
         /// inverse to carry the ray back along.

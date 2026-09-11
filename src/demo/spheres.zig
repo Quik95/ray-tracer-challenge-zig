@@ -7,6 +7,7 @@ const std = @import("std");
 const camera_mod = @import("../render/camera.zig");
 const color = @import("../render/color.zig");
 const light_mod = @import("../scene/light.zig");
+const pattern_mod = @import("../scene/pattern.zig");
 const shape = @import("../scene/shape.zig");
 const transform = @import("../math/transform.zig");
 const tuple = @import("../math/tuple.zig");
@@ -22,11 +23,24 @@ pub fn Scene(comptime T: type) type {
         pub const Tf = transform.Transforms(T);
         pub const V = tuple.Tuple(T);
         pub const World = world_mod.World(T);
+        pub const Pattern = pattern_mod.Pattern(T);
 
         pub const object_count = 5;
 
         /// The matte, barely reflective surface the room is made of.
-        const room_material: Object.Mat = .{ .color = C.init(1, 0.9, 0.9), .specular = 0 };
+        fn roomMaterial(p: Pattern) Object.Mat {
+            return .{ .color = C.init(1, 0.9, 0.9), .specular = 0, .pattern = p };
+        }
+
+        /// A tiled floor, and a wall of narrow vertical bands behind it.
+        const floor_pattern: Pattern = .{
+            .transform = Tf.scaling(0.5, 0.5, 0.5),
+            .kind = .{ .checkers = .{ .a = C.init(0.9, 0.9, 0.9), .b = C.init(0.35, 0.35, 0.4) } },
+        };
+        const wall_pattern: Pattern = .{
+            .transform = Tf.scaling(0.25, 0.25, 0.25),
+            .kind = .{ .stripes = .{ .a = C.init(1, 0.9, 0.9), .b = C.init(0.7, 0.55, 0.55) } },
+        };
 
         /// The floor and the wall behind it, then the three balls.
         pub fn objects() [object_count]Object {
@@ -34,28 +48,51 @@ pub fn Scene(comptime T: type) type {
                 .{
                     .id = 0,
                     .geometry = .{ .plane = .{} },
-                    .material = room_material,
+                    .material = roomMaterial(floor_pattern),
                 },
                 .{
                     .id = 1,
                     .geometry = .{ .plane = .{} },
                     .transform = Tf.chain().rotateX(std.math.pi / 2.0).translate(0, 0, 5).m,
-                    .material = room_material,
+                    .material = roomMaterial(wall_pattern),
                 },
                 .{
                     .id = 2,
                     .transform = Tf.translation(-0.5, 1, 0.5),
-                    .material = .{ .color = C.init(0.1, 1, 0.5), .diffuse = 0.7, .specular = 0.3 },
+                    .material = .{
+                        .diffuse = 0.7,
+                        .specular = 0.3,
+                        // Rings lying flat would band the ball horizontally;
+                        // tipping and shrinking them wraps it instead.
+                        .pattern = .{
+                            .transform = Tf.chain().scale(0.25, 0.25, 0.25).rotateX(std.math.pi / 3.0).m,
+                            .kind = .{ .rings = .{ .a = C.init(0.1, 1, 0.5), .b = C.init(0.05, 0.4, 0.25) } },
+                        },
+                    },
                 },
                 .{
                     .id = 3,
                     .transform = Tf.chain().scale(0.5, 0.5, 0.5).translate(1.5, 0.5, -0.5).m,
-                    .material = .{ .color = C.init(0.5, 1, 0.1), .diffuse = 0.7, .specular = 0.3 },
+                    .material = .{
+                        .diffuse = 0.7,
+                        .specular = 0.3,
+                        .pattern = .{
+                            .transform = Tf.chain().scale(0.5, 0.5, 0.5).rotateZ(std.math.pi / 4.0).m,
+                            .kind = .{ .gradient = .{ .a = C.init(0.5, 1, 0.1), .b = C.init(0.1, 0.3, 0.8) } },
+                        },
+                    },
                 },
                 .{
                     .id = 4,
                     .transform = Tf.chain().scale(0.33, 0.33, 0.33).translate(-1.5, 0.33, -0.75).m,
-                    .material = .{ .color = C.init(1, 0.8, 0.1), .diffuse = 0.7, .specular = 0.3 },
+                    .material = .{
+                        .diffuse = 0.7,
+                        .specular = 0.3,
+                        .pattern = .{
+                            .transform = Tf.scaling(0.2, 0.2, 0.2),
+                            .kind = .{ .stripes = .{ .a = C.init(1, 0.8, 0.1), .b = C.init(0.6, 0.3, 0.05) } },
+                        },
+                    },
                 },
             };
         }
@@ -109,4 +146,12 @@ test "the floor is a plane the balls stand on" {
     try testing.expect(objects[0].geometry == .plane);
     try testing.expect(objects[0].normalAt(tuple.Tup.point(7, 0, -3)).?
         .eql(tuple.Tup.vector(0, 1, 0)));
+}
+
+test "the floor is tiled, and the tiles alternate" {
+    const objects = Default.objects();
+    const floor = objects[0].material;
+    try testing.expect(floor.pattern != null);
+    try testing.expect(!floor.colorAt(tuple.Tup.point(0.25, 0, 0.25))
+        .eql(floor.colorAt(tuple.Tup.point(0.75, 0, 0.25))));
 }

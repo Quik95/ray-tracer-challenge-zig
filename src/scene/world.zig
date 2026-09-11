@@ -79,9 +79,14 @@ pub fn World(comptime T: type) type {
         /// Shade a prepared crossing with this world's light.
         pub fn shadeHit(self: Self, comps: Comps) C {
             const light = self.light orelse return C.black;
+            // A pattern is written in the object's own coordinates, so the
+            // lit point is handed over in both; a collapsed object has no
+            // object space left to speak of and falls back to world space.
+            const object_point = comps.object.localPoint(comps.over_point) orelse comps.over_point;
             return comps.object.material.lighting(
                 light,
                 comps.over_point,
+                object_point,
                 comps.eye,
                 comps.normal,
                 self.isShadowed(comps.over_point),
@@ -248,4 +253,20 @@ test "shading a crossing that lies in shadow leaves only ambient" {
     const r = R.init(V.point(0, 0, 5), V.vector(0, 0, 1));
     const comps = W.Hit.init(4, &objects[1]).prepare(r).?;
     try testing.expect(w.shadeHit(comps).eql(Col.init(0.1, 0.1, 0.1)));
+}
+
+test "a pattern on a transformed object moves with it" {
+    // A striped sphere scaled by two: the stripes are twice as wide in the
+    // world as they are on the sphere, so a point that would fall in the
+    // second band lands in the first.
+    var pattern = @import("pattern.zig").Pat.stripes(Col.white, Col.black);
+    pattern.setTransform(Tf.scaling(0.5, 0.5, 0.5));
+    const objects = [1]Sh{.{
+        .transform = Tf.scaling(2, 2, 2),
+        .material = .{ .pattern = pattern, .ambient = 1, .diffuse = 0, .specular = 0 },
+    }};
+    const w = defaultWorld(&objects);
+
+    const r = R.init(V.point(0, 0, -5), V.vector(0, 0, 1));
+    try testing.expect(w.colorAt(r).eql(Col.white));
 }
