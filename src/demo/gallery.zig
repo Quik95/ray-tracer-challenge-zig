@@ -14,6 +14,7 @@ const std = @import("std");
 const camera_mod = @import("../render/camera.zig");
 const canvas = @import("../render/canvas.zig");
 const color = @import("../render/color.zig");
+const obj_mod = @import("../scene/obj.zig");
 
 const clock = @import("clock.zig");
 const hexagon = @import("hexagon.zig");
@@ -30,13 +31,16 @@ const spheres = @import("spheres.zig");
 const soft_shadows = @import("soft_shadows.zig");
 const focal_blur = @import("focal_blur.zig");
 const texture_maps = @import("texture_maps.zig");
+const models = @import("models.zig");
 
 /// The gallery, over a float type.
 pub fn Gallery(comptime T: type) type {
     return struct {
         pub const Cam = camera_mod.Camera(T);
         pub const Image = canvas.Canvas(color.Color(T));
-        pub const RenderError = Cam.RenderError;
+        /// What a render can fail at: the camera's own failures, and the
+        /// reading of a scene that comes from a file rather than from source.
+        pub const RenderError = Cam.RenderError || obj_mod.Obj(T).ParseError;
 
         /// Renders the scene at the given size. The caller owns the result.
         pub const RenderFn = *const fn (
@@ -75,6 +79,7 @@ pub fn Gallery(comptime T: type) type {
             soft_shadows.Scene(T),
             focal_blur.Scene(T),
             texture_maps.Scene(T),
+            models.Scene(T),
         };
 
         pub const count = scenes.len;
@@ -97,6 +102,14 @@ pub fn Gallery(comptime T: type) type {
             break :blk all;
         };
 
+        /// Whether a scene builds its shapes out of something it has to read
+        /// first. Most write their shapes out in source and need nothing; one
+        /// that loads a mesh takes an allocator and hands back something to
+        /// free.
+        fn needsAllocator(comptime Scene: type) bool {
+            return @typeInfo(@TypeOf(Scene.objects)).@"fn".params.len == 1;
+        }
+
         /// The scene's whole pipeline behind one function pointer. A world
         /// scene's objects live only as long as the render that looks at them.
         fn renderer(comptime Scene: type) RenderFn {
@@ -114,7 +127,13 @@ pub fn Gallery(comptime T: type) type {
                         // own, which it can only do once the shapes are
                         // standing where they will stay: here, and not in
                         // the array it handed back.
-                        var objects = Scene.objects();
+                        var objects = if (comptime needsAllocator(Scene))
+                            try Scene.objects(allocator)
+                        else
+                            Scene.objects();
+                        // What was read is the scene's to keep only as long as
+                        // the render that looks at it.
+                        defer if (comptime needsAllocator(Scene)) objects.deinit();
                         const world = Scene.world(&objects);
                         const camera = Scene.camera(width, height);
                         return camera.renderParallel(allocator, io, world, progress, workers);
@@ -153,7 +172,7 @@ const testing = std.testing;
 
 test "the gallery runs from the first drawing to the newest scene" {
     try testing.expectEqualStrings("projectile", Default.entries[0].name);
-    try testing.expectEqualStrings("texture-maps", Default.latest.name);
+    try testing.expectEqualStrings("models", Default.latest.name);
 
     // Names are what the command line matches on, so they must be distinct.
     for (Default.entries, 0..) |entry, i| {
@@ -173,7 +192,8 @@ test "scenes of a group share a directory, numbered in gallery order" {
     try testing.expectEqualStrings("7-csg", Default.find("csg").?.dir);
     try testing.expectEqualStrings("8-light", Default.find("soft-shadows").?.dir);
     try testing.expectEqualStrings("9-lens", Default.find("focal-blur").?.dir);
-    try testing.expectEqualStrings("10-texture", Default.latest.dir);
+    try testing.expectEqualStrings("10-texture", Default.find("texture-maps").?.dir);
+    try testing.expectEqualStrings("11-models", Default.latest.dir);
 
     // A group is one run of neighbouring scenes: once its directory has been
     // left behind, it is never returned to.

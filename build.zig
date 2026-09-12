@@ -16,6 +16,12 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    // The demo draws a few meshes too large to write out by hand, so the
+    // library carries them as files it embeds rather than as source.
+    for ([_][]const u8{ "teapot.obj", "suzanne.obj", "spot.obj" }) |model| {
+        mod.addAnonymousImport(model, .{ .root_source_file = b.path(b.pathJoin(&.{ "models", model })) });
+    }
+
     const exe = b.addExecutable(.{
         .name = "ray_tracing_challange_zig",
         .use_llvm = true,

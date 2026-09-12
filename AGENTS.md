@@ -66,6 +66,8 @@ need to read the source material; do not commit the book or long excerpts of it.
   geometries, intersections.
 - `src/render/` — colors and the canvas they are written to.
 - `src/demo/` — the scenes `src/main.zig` draws.
+- `models/` — the meshes the demo reads: OBJ files the library embeds, and
+  the awk script that gave them vertex normals.
 - `build.zig` — build graph; `listZigSources` walks `src/` recursively and
   feeds `src/root.zig` the real listing so a new, unimported file fails the
   suite.
