@@ -63,9 +63,12 @@ need to read the source material; do not commit the book or long excerpts of it.
 - `src/main.zig` — the executable's root, its own module.
 - `src/math/` — tuples, matrices, and the transformations built from them.
 - `src/scene/` — what a ray is and what it meets: rays, shapes and their
-  geometries, intersections.
+  geometries, intersections, and the reader that builds a world out of a
+  scene file.
 - `src/render/` — colors and the canvas they are written to.
 - `src/demo/` — the scenes `src/main.zig` draws.
+- `scenes/` — example scene files, in the text format `src/scene/yaml.zig`
+  parses and `src/scene/description.zig` turns into a world and a camera.
 - `models/` — the meshes the demo reads: OBJ files the library embeds, and
   the awk script that gave them vertex normals.
 - `build.zig` — build graph; `listZigSources` walks `src/` recursively and

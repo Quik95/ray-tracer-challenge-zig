@@ -26,6 +26,8 @@ pub const cone = @import("scene/cone.zig");
 pub const triangle = @import("scene/triangle.zig");
 pub const csg = @import("scene/csg.zig");
 pub const obj = @import("scene/obj.zig");
+pub const yaml = @import("scene/yaml.zig");
+pub const description = @import("scene/description.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
 pub const material = @import("scene/material.zig");
@@ -165,6 +167,11 @@ pub const Canvas = canvas.Canvas;
 /// The canvas the ray tracer renders into.
 pub const Image = canvas.Image;
 
+/// Generic scene read from a description file, parameterized by float type.
+pub const Description = description.Description;
+/// Scene descriptions at the precision the ray tracer uses.
+pub const Desc = description.Desc;
+
 /// Source files whose tests are pulled in by the imports above. Kept in sync
 /// with `src/` by the test below, so adding a file and forgetting to import it
 /// fails the suite instead of silently skipping its tests.
@@ -187,6 +194,8 @@ const covered_sources = [_][]const u8{
     "scene/triangle.zig",
     "scene/csg.zig",
     "scene/obj.zig",
+    "scene/yaml.zig",
+    "scene/description.zig",
     "scene/shape.zig",
     "scene/light.zig",
     "scene/material.zig",
@@ -238,6 +247,8 @@ test {
     _ = triangle;
     _ = csg;
     _ = obj;
+    _ = yaml;
+    _ = description;
     _ = shape;
     _ = light;
     _ = material;

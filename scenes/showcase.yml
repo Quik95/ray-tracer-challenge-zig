@@ -1,0 +1,226 @@
+# A scene that leans on every part of the reader: an area light, named
+# materials and transforms, all five primitives, a constructive solid, nested
+# groups, and one of each pattern. It is meant to break loudly if anything in
+# the pipeline regresses.
+
+- add: camera
+  width: 900
+  height: 550
+  field-of-view: 1.0472
+  from: [-2.4, 3.2, -9]
+  to: [0, 1.1, 0]
+  up: [0, 1, 0]
+  supersample: 2
+
+# A light with a surface: sampled over a grid, so edges land soft.
+- add: area-light
+  corner: [-5, 7, -6]
+  uvec: [3, 0, 0]
+  vvec: [0, 0, 3]
+  usteps: 3
+  vsteps: 3
+  intensity: [1, 1, 1]
+
+# --- Named pieces ------------------------------------------------------
+
+- define: dull
+  value:
+    diffuse: 0.8
+    specular: 0.1
+    ambient: 0.08
+    shininess: 40
+
+- define: polished
+  extend: dull
+  value:
+    specular: 0.7
+    shininess: 200
+    reflective: 0.25
+
+- define: glass
+  value:
+    color: [0.02, 0.05, 0.05]
+    ambient: 0
+    diffuse: 0.05
+    specular: 0.95
+    shininess: 300
+    reflective: 0.95
+    transparency: 0.95
+    refractive-index: 1.52
+
+- define: pedestal
+  value:
+    - [scale, 0.35, 0.35, 0.35]
+    - [rotate-y, 0.4]
+
+# --- The room ----------------------------------------------------------
+
+- add: plane
+  material:
+    pattern:
+      type: checkers
+      colors:
+        - [0.9, 0.9, 0.9]
+        - [0.35, 0.35, 0.4]
+    specular: 0
+    ambient: 0.12
+    reflective: 0.05
+
+# Back wall, tipped upright and pushed away.
+- add: plane
+  material:
+    pattern:
+      type: stripes
+      colors:
+        - [0.55, 0.6, 0.7]
+        - [0.45, 0.5, 0.62]
+      transform:
+        - [scale, 0.4, 0.4, 0.4]
+        - [rotate-y, 1.5708]
+    specular: 0
+  transform:
+    - [rotate-x, 1.5708]
+    - [translate, 0, 0, 7]
+
+# --- Left: a gradient sphere on a closed cylinder -----------------------
+
+- add: group
+  transform:
+    - [translate, -3.1, 0, 0.6]
+  children:
+    - add: cylinder
+      minimum: 0
+      maximum: 1
+      closed: true
+      material: polished
+      transform:
+        - [scale, 0.55, 1.1, 0.55]
+    - add: sphere
+      material:
+        pattern:
+          type: gradient
+          colors:
+            - [0.9, 0.2, 0.2]
+            - [0.2, 0.3, 0.9]
+          transform:
+            - [scale, 2, 2, 2]
+            - [translate, -1, 0, 0]
+        diffuse: 0.75
+        specular: 0.4
+        shininess: 90
+      transform:
+        - [scale, 0.7, 0.7, 0.7]
+        - [translate, 0, 1.8, 0]
+
+# --- Middle: a cube with a sphere bitten out of it ----------------------
+
+- add: csg
+  operation: difference
+  transform:
+    - [rotate-y, 0.5]
+    - [translate, -0.4, 1, 0]
+  left:
+    add: cube
+    material:
+      color: [0.85, 0.65, 0.25]
+      diffuse: 0.7
+      specular: 0.5
+      shininess: 120
+      reflective: 0.15
+  right:
+    add: sphere
+    material:
+      color: [0.3, 0.7, 0.4]
+      diffuse: 0.8
+      specular: 0.3
+    transform:
+      - [scale, 1.35, 1.35, 1.35]
+
+# --- Right: glass over a ringed disc -----------------------------------
+
+- add: group
+  transform:
+    - [translate, 2.9, 0, -0.4]
+  children:
+    - add: cylinder
+      minimum: 0
+      maximum: 0.2
+      closed: true
+      material:
+        pattern:
+          type: rings
+          colors:
+            - [0.2, 0.2, 0.25]
+            - [0.8, 0.8, 0.85]
+          transform:
+            - [scale, 0.22, 0.22, 0.22]
+        specular: 0.3
+      transform:
+        - [scale, 1.5, 1, 1.5]
+    - add: sphere
+      material: glass
+      # Glass that throws an opaque shadow reads as a dark blob; it is told
+      # to keep out of the shadow pass instead.
+      shadow: false
+      transform:
+        - [scale, 0.9, 0.9, 0.9]
+        - [translate, 0, 1.1, 0]
+
+# --- Behind: a cone wearing a checkered skin, on a pedestal -------------
+
+- add: group
+  transform:
+    - [translate, 0.6, 0, 4.2]
+  children:
+    - add: cube
+      material: dull
+      transform: pedestal
+    - add: cone
+      minimum: -1
+      maximum: 0
+      closed: true
+      material:
+        pattern:
+          type: uv-checkers
+          mapping: cylindrical
+          u: 12
+          v: 6
+          colors:
+            - [0.95, 0.9, 0.3]
+            - [0.6, 0.15, 0.15]
+        diffuse: 0.8
+        specular: 0.2
+      transform:
+        - [scale, 0.8, 1.6, 0.8]
+        - [translate, 0, 2.3, 0]
+
+# --- Front left: a nested group of small spheres ------------------------
+
+- add: group
+  transform:
+    - [scale, 0.5, 0.5, 0.5]
+    - [translate, -1.4, 0.3, -3.2]
+  children:
+    - add: group
+      transform:
+        - [rotate-y, 0.8]
+      children:
+        - add: sphere
+          material:
+            color: [0.9, 0.35, 0.6]
+            diffuse: 0.8
+            specular: 0.4
+          transform:
+            - [translate, -1.2, 0.6, 0]
+        - add: sphere
+          material:
+            color: [0.35, 0.85, 0.85]
+            diffuse: 0.8
+            specular: 0.4
+          transform:
+            - [translate, 1.2, 0.6, 0]
+    - add: sphere
+      material: polished
+      transform:
+        - [scale, 0.6, 0.6, 0.6]
+        - [translate, 0, 1.6, 0]

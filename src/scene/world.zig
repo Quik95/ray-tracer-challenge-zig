@@ -78,15 +78,23 @@ pub fn World(comptime T: type) type {
         }
 
         /// Whether something stands between `point` and `light_point`.
+        ///
+        /// An object that casts no shadow is passed over, and so is
+        /// everything beneath it: the flag is read here, where the world's
+        /// objects are, rather than partway down a group's tree.
         pub fn isOccluded(self: Self, light_point: Object.Point, point: Object.Point) bool {
             const to_light = light_point.sub(point);
             const distance = to_light.magnitude();
             const r = Ray.init(point, to_light.normalize());
 
-            // Only what lies short of the light itself casts a shadow here;
-            // anything beyond it is behind the point's light source.
-            const blocker = self.hit(r) orelse return false;
-            return blocker.t < distance;
+            for (self.objects) |*object| {
+                if (!object.casts_shadow) continue;
+                const blocker = object.nearestHit(r) orelse continue;
+                // Only what lies short of the light itself casts a shadow
+                // here; anything beyond it is behind the point's light source.
+                if (blocker.t < distance) return true;
+            }
+            return false;
         }
 
         /// How much of the light reaches `point`: none of it at zero, all of
@@ -384,6 +392,21 @@ test "an object behind the point casts no shadow" {
     const objects = defaultObjects();
     const w = defaultWorld(&objects);
     try testing.expect(!w.isShadowed(V.point(-2, 2, -2)));
+}
+
+test "a shape excused from casting shadows lets the light through" {
+    var objects = defaultObjects();
+    objects[0].casts_shadow = false;
+    objects[1].casts_shadow = false;
+    const w = defaultWorld(&objects);
+    try testing.expect(!w.isShadowed(V.point(10, -10, 10)));
+}
+
+test "excusing one shape leaves the others casting" {
+    var objects = defaultObjects();
+    objects[1].casts_shadow = false;
+    const w = defaultWorld(&objects);
+    try testing.expect(w.isShadowed(V.point(10, -10, 10)));
 }
 
 test "a world without a light shadows nothing" {

@@ -1,0 +1,104 @@
+# A scene written the way the ray tracer reads them: a list of items, each
+# either a `define` naming something for later or an `add` standing something
+# in the world. Render it with `gallery scenes/cover.yml 800x600 -o images`.
+
+- add: camera
+  width: 800
+  height: 600
+  field-of-view: 0.7854
+  from: [-3, 2.5, -6]
+  to: [0, 0.6, 0]
+  up: [0, 1, 0]
+  supersample: 2
+
+- add: light
+  at: [-6, 8, -8]
+  intensity: [1, 1, 1]
+
+# Names bind a value once and reuse it; `extend` starts from another name and
+# overrides only the keys that follow.
+- define: matte
+  value:
+    diffuse: 0.8
+    specular: 0.1
+    ambient: 0.1
+
+- define: glass
+  value:
+    color: [0.05, 0.08, 0.08]
+    diffuse: 0.1
+    specular: 0.9
+    shininess: 300
+    reflective: 0.9
+    transparency: 0.9
+    refractive-index: 1.52
+
+- define: brass
+  extend: matte
+  value:
+    color: [0.75, 0.55, 0.2]
+    specular: 0.6
+    shininess: 120
+    reflective: 0.3
+
+- add: plane
+  material:
+    pattern:
+      type: checkers
+      colors:
+        - [0.85, 0.85, 0.85]
+        - [0.4, 0.4, 0.45]
+    specular: 0
+    ambient: 0.15
+
+- add: sphere
+  material: glass
+  # A pane of glass throws an opaque shadow unless it is told not to.
+  shadow: false
+  transform:
+    - [scale, 1.2, 1.2, 1.2]
+    - [translate, -1.6, 1.2, 0.4]
+
+- add: sphere
+  material: brass
+  transform:
+    - [scale, 0.9, 0.9, 0.9]
+    - [translate, 1.1, 0.9, -0.6]
+
+- add: cube
+  material:
+    color: [0.2, 0.35, 0.7]
+    diffuse: 0.7
+    specular: 0.3
+    reflective: 0.1
+  transform:
+    - [scale, 0.6, 0.6, 0.6]
+    - [rotate-y, 0.6]
+    - [translate, 0.2, 0.6, 2.2]
+
+# Transforms listed on a group carry everything beneath it.
+- add: group
+  transform:
+    - [translate, 3.4, 0, 1.2]
+  children:
+    - add: cylinder
+      minimum: 0
+      maximum: 1.6
+      closed: true
+      material:
+        color: [0.8, 0.2, 0.25]
+        diffuse: 0.7
+        specular: 0.3
+      transform:
+        - [scale, 0.35, 1, 0.35]
+    - add: cone
+      minimum: -1
+      maximum: 0
+      closed: true
+      material:
+        color: [0.9, 0.8, 0.3]
+        diffuse: 0.7
+        specular: 0.3
+      transform:
+        - [scale, 0.55, 0.8, 0.55]
+        - [translate, 0, 2.4, 0]

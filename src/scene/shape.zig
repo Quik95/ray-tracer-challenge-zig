@@ -83,6 +83,11 @@ pub fn Shape(comptime T: type) type {
         transform: M = M.identity,
         /// What the surface is made of, and how it answers light.
         material: Mat = .{},
+        /// Whether the shape stops light on its way to a surface. Almost
+        /// everything does; turning it off is what lets a shape be seen
+        /// without darkening what stands behind it — a pane of glass that
+        /// would otherwise throw an opaque shadow, or a light's own fixture.
+        casts_shadow: bool = true,
         /// The surface itself.
         geometry: Geometry = .{ .sphere = .{} },
 
