@@ -82,6 +82,16 @@ pub fn Scene(comptime T: type) type {
 
         /// The table top, the four legs beneath it, and where each leg stands.
         const table_top_y = 1.5;
+        /// What stands on the table is lifted clear of it by this much.
+        ///
+        /// Two solid faces occupying exactly the same plane leave nothing to
+        /// choose between them: both are met at the same distance, and which
+        /// one a ray reports is settled by the last bits of each shape's own
+        /// arithmetic. That comes out as a speckle of whichever won each
+        /// pixel — worst under the glass, where what lies beneath still shows
+        /// through and the fight is on display. A gap far below what the
+        /// image can resolve, and far above the round-off, ends it.
+        const clearance = 1e-3;
         const top_thickness = 0.08;
         const leg = 0.09;
         const leg_x = 1.4;
@@ -129,7 +139,7 @@ pub fn Scene(comptime T: type) type {
                     Tf.chain()
                         .scale(0.3, 0.3, 0.3)
                         .rotateY(0.4)
-                        .translate(0.55, table_top_y + 0.3, -0.1).m,
+                        .translate(0.55, table_top_y + 0.3 + clearance, -0.1).m,
                     .{
                         .color = C.init(0.05, 0.07, 0.06),
                         .ambient = 0.05,
@@ -146,7 +156,7 @@ pub fn Scene(comptime T: type) type {
                     Tf.chain()
                         .scale(0.22, 0.16, 0.22)
                         .rotateY(-0.7)
-                        .translate(-0.6, table_top_y + 0.16, 0.15).m,
+                        .translate(-0.6, table_top_y + 0.16 + clearance, 0.15).m,
                     .{ .color = C.init(0.75, 0.15, 0.2), .specular = 0.4, .shininess = 80 },
                 ),
 
