@@ -1,6 +1,7 @@
 # github/gitignore → Zig.gitignore
 .zig-cache/
 zig-out/
+zig-pkg/
 *.o
 
 # github/gitignore → Global/Linux.gitignore

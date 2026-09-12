@@ -1,16 +1,24 @@
 const std = @import("std");
 
+// zigimg crashes the self-hosted x86 backend, so everything that reaches its
+// code is compiled through LLVM. Upstream does the same for its own tests.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
+
     const mod = b.addModule("ray_tracing_challange_zig", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "zigimg", .module = zigimg.module("zigimg") },
+        },
     });
 
     const exe = b.addExecutable(.{
         .name = "ray_tracing_challange_zig",
+        .use_llvm = true,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -35,10 +43,10 @@ pub fn build(b: *std.Build) void {
     source_files.addOption([]const []const u8, "names", listZigSources(b, "src"));
     mod.addOptions("source_files", source_files);
 
-    const mod_tests = b.addTest(.{ .root_module = mod });
+    const mod_tests = b.addTest(.{ .root_module = mod, .use_llvm = true });
     const run_mod_tests = b.addRunArtifact(mod_tests);
 
-    const exe_tests = b.addTest(.{ .root_module = exe.root_module });
+    const exe_tests = b.addTest(.{ .root_module = exe.root_module, .use_llvm = true });
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const test_step = b.step("test", "Run tests");

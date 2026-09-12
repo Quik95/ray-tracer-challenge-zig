@@ -35,6 +35,7 @@ pub const world = @import("scene/world.zig");
 pub const color = @import("render/color.zig");
 pub const canvas = @import("render/canvas.zig");
 pub const camera = @import("render/camera.zig");
+pub const png = @import("render/png.zig");
 
 // Scenes the demo program can draw.
 pub const projectile = @import("demo/projectile.zig");
@@ -191,6 +192,7 @@ const covered_sources = [_][]const u8{
     "render/color.zig",
     "render/canvas.zig",
     "render/camera.zig",
+    "render/png.zig",
     "demo/projectile.zig",
     "demo/clock.zig",
     "demo/spheres.zig",
@@ -238,6 +240,7 @@ test {
     _ = pattern;
     _ = world;
     _ = camera;
+    _ = png;
     _ = spheres;
     _ = cubes;
     _ = cylinders;

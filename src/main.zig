@@ -9,6 +9,10 @@
 //! group of scenes shares. The exception is one scene with stdout redirected:
 //! that goes straight down the pipe, so a single image can still be fed to an
 //! image viewer without touching the disk.
+//!
+//! Images are written as PNG. A render is mostly smooth gradients and flat
+//! background, which compresses to a small fraction of the pixels it covers,
+//! and a gallery of them is otherwise hundreds of megabytes.
 
 const std = @import("std");
 const Io = std.Io;
@@ -83,7 +87,7 @@ pub fn main(init: std.process.Init) !void {
     const to_stdout = job.scenes.len == 1 and job.out_dir == null and !try stdout.isTty(io);
 
     // Notes go wherever the images are not, so a redirected stdout stays a
-    // valid PPM stream.
+    // valid image stream.
     var log_buffer: [1024]u8 = undefined;
     var log_writer: Io.File.Writer = .init(if (to_stdout) .stderr() else stdout, io, &log_buffer);
     const log = &log_writer.interface;
@@ -105,19 +109,16 @@ pub fn main(init: std.process.Init) !void {
         if (root) |out| {
             const group = try std.fs.path.join(gpa, &.{ out, scene.dir });
             defer gpa.free(group);
-            const name = try std.fmt.allocPrint(gpa, "{s}.ppm", .{scene.name});
+            const name = try std.fmt.allocPrint(gpa, "{s}.png", .{scene.name});
             defer gpa.free(name);
             const path = try std.fs.path.join(gpa, &.{ group, name });
             defer gpa.free(path);
 
             try Io.Dir.cwd().createDirPath(io, group);
-            try writeFile(io, path, image);
+            try writeFile(gpa, io, path, image);
             try log.print("wrote {s} ({d}x{d})\n", .{ path, job.size.width, job.size.height });
         } else {
-            var image_buffer: [64 * 1024]u8 = undefined;
-            var image_writer: Io.File.Writer = .init(stdout, io, &image_buffer);
-            try image.writePpm(&image_writer.interface);
-            try image_writer.interface.flush();
+            try rt.png.writeFile(image, gpa, io, stdout);
             try log.print("wrote the {d}x{d} {s} image to stdout\n", .{
                 job.size.width,
                 job.size.height,
@@ -237,14 +238,11 @@ fn defaultRoot(
 /// Write the image out, replacing any previous run's file. Written through a
 /// temporary and renamed into place so an interrupted run cannot leave a
 /// half-written image behind.
-fn writeFile(io: Io, path: []const u8, image: rt.Image) !void {
+fn writeFile(gpa: std.mem.Allocator, io: Io, path: []const u8, image: rt.Image) !void {
     var atomic = try Io.Dir.cwd().createFileAtomic(io, path, .{ .replace = true });
     defer atomic.deinit(io);
 
-    var buffer: [64 * 1024]u8 = undefined;
-    var file_writer = atomic.file.writer(io, &buffer);
-    try image.writePpm(&file_writer.interface);
-    try file_writer.interface.flush();
+    try rt.png.writeFile(image, gpa, io, atomic.file);
 
     try atomic.replace(io);
 }
