@@ -29,6 +29,7 @@ const sphere_cast = @import("sphere_cast.zig");
 const spheres = @import("spheres.zig");
 const soft_shadows = @import("soft_shadows.zig");
 const focal_blur = @import("focal_blur.zig");
+const texture_maps = @import("texture_maps.zig");
 
 /// The gallery, over a float type.
 pub fn Gallery(comptime T: type) type {
@@ -73,6 +74,7 @@ pub fn Gallery(comptime T: type) type {
             carving.Scene(T),
             soft_shadows.Scene(T),
             focal_blur.Scene(T),
+            texture_maps.Scene(T),
         };
 
         pub const count = scenes.len;
@@ -151,7 +153,7 @@ const testing = std.testing;
 
 test "the gallery runs from the first drawing to the newest scene" {
     try testing.expectEqualStrings("projectile", Default.entries[0].name);
-    try testing.expectEqualStrings("focal-blur", Default.latest.name);
+    try testing.expectEqualStrings("texture-maps", Default.latest.name);
 
     // Names are what the command line matches on, so they must be distinct.
     for (Default.entries, 0..) |entry, i| {
@@ -170,7 +172,8 @@ test "scenes of a group share a directory, numbered in gallery order" {
     try testing.expectEqualStrings("6-triangles", Default.find("triangles").?.dir);
     try testing.expectEqualStrings("7-csg", Default.find("csg").?.dir);
     try testing.expectEqualStrings("8-light", Default.find("soft-shadows").?.dir);
-    try testing.expectEqualStrings("9-lens", Default.latest.dir);
+    try testing.expectEqualStrings("9-lens", Default.find("focal-blur").?.dir);
+    try testing.expectEqualStrings("10-texture", Default.latest.dir);
 
     // A group is one run of neighbouring scenes: once its directory has been
     // left behind, it is never returned to.

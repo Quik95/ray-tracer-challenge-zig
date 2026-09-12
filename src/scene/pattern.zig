@@ -40,6 +40,79 @@ pub fn Pattern(comptime T: type) type {
             }
         };
 
+        /// How a point on a surface is read as a place on a flat image.
+        ///
+        /// A solid pattern is a rule about all of space, and an object is
+        /// coloured by whatever part of that space it happens to occupy. A
+        /// mapping does the opposite: it hands the surface its own two
+        /// coordinates, `u` around and `v` across, both running from zero to
+        /// one, so that a picture can be wrapped onto the shape the way a
+        /// label is wrapped onto a can.
+        pub const Mapping = enum {
+            /// Straight down onto the xz plane, repeating every unit. What a
+            /// floor or a wall wants.
+            planar,
+            /// Longitude and latitude on the unit sphere, so that `u` goes
+            /// once round the equator and `v` from the south pole to the
+            /// north.
+            spherical,
+            /// Round the y axis for `u`, and straight up it for `v`, which
+            /// leaves the ends of a cylinder to nothing in particular.
+            cylindrical,
+
+            /// The place on the image that `p` is coloured by.
+            pub fn at(self: Mapping, p: Point) struct { T, T } {
+                return switch (self) {
+                    .planar => .{ fract(p.x()), fract(p.z()) },
+                    .cylindrical => .{ around(p), fract(p.y()) },
+                    .spherical => blk: {
+                        const radius = p.magnitude();
+                        // The angle down from the north pole, which is the
+                        // latitude read the other way up.
+                        const phi = std.math.acos(std.math.clamp(
+                            if (radius == 0) @as(T, 0) else p.y() / radius,
+                            -1,
+                            1,
+                        ));
+                        break :blk .{ around(p), 1 - phi / std.math.pi };
+                    },
+                };
+            }
+
+            /// How far round the y axis a point lies, as a fraction of the
+            /// whole turn, counted the way the surface is seen from outside.
+            fn around(p: Point) T {
+                const theta = std.math.atan2(p.x(), p.z());
+                return 1 - (theta / (2 * std.math.pi) + 0.5);
+            }
+
+            /// The part of a number past its whole, kept positive so the
+            /// pattern does not mirror itself about the origin.
+            fn fract(v: T) T {
+                return v - @floor(v);
+            }
+        };
+
+        /// Squares laid out on a surface's own two coordinates: `u` of them
+        /// round it and `v` of them across.
+        pub const UvCheckers = struct {
+            pair: Pair = .{},
+            map: Mapping = .planar,
+            u: T = 2,
+            v: T = 2,
+
+            pub fn eql(x: UvCheckers, y: UvCheckers) bool {
+                return x.pair.eql(y.pair) and x.map == y.map and
+                    tuple.feq(T, x.u, y.u) and tuple.feq(T, x.v, y.v);
+            }
+
+            fn at(self: UvCheckers, p: Point) C {
+                const u, const v = self.map.at(p);
+                const squares = @floor(u * self.u) + @floor(v * self.v);
+                return self.pair.pick(@mod(squares, 2) == 0);
+            }
+        };
+
         /// The rules themselves.
         pub const Kind = union(enum) {
             /// Bands alternating along x, constant in y and z.
@@ -50,6 +123,8 @@ pub fn Pattern(comptime T: type) type {
             rings: Pair,
             /// Cubes of alternating colour filling all three dimensions.
             checkers: Pair,
+            /// Squares laid out on the surface itself rather than in space.
+            uv_checkers: UvCheckers,
             /// The point itself, read as a colour. Nothing in a scene wants
             /// this; it is how a test sees which point the rule was handed.
             position,
@@ -83,6 +158,17 @@ pub fn Pattern(comptime T: type) type {
             return .{ .kind = .{ .checkers = .{ .a = a, .b = b } } };
         }
 
+        /// Squares wrapped onto the surface by `map`: `u` of them round it
+        /// and `v` of them across, however large the object itself is.
+        pub fn uvCheckers(map: Mapping, u: T, v: T, a: C, b: C) Self {
+            return .{ .kind = .{ .uv_checkers = .{
+                .pair = .{ .a = a, .b = b },
+                .map = map,
+                .u = u,
+                .v = v,
+            } } };
+        }
+
         pub fn setTransform(self: *Self, m: M) void {
             self.transform = m;
         }
@@ -102,6 +188,9 @@ pub fn Pattern(comptime T: type) type {
                 // The fractional part of x walks from a to b and snaps back,
                 // so the blend repeats once per unit.
                 .gradient => |pair| pair.a.add(pair.b.sub(pair.a).mul(p.x() - @floor(p.x()))),
+                // Where a solid checker asks where in space the point is,
+                // this one asks where on the surface it is.
+                .uv_checkers => |squares| squares.at(p),
                 .position => C.init(p.x(), p.y(), p.z()),
             };
         }
@@ -217,5 +306,65 @@ test "patterns are evaluated at comptime" {
         const p = Pat.checkers(white, black);
         try testing.expect(p.at(V.point(1.01, 0, 0)).eql(black));
         try testing.expect(p.atObject(V.point(0.5, 0, 0)).eql(white));
+    }
+}
+
+test "a planar mapping repeats every unit of the floor" {
+    const p = Pat.uvCheckers(.planar, 2, 2, white, black);
+    try testing.expect(p.at(V.point(0.25, 0, 0.25)).eql(white));
+    try testing.expect(p.at(V.point(0.75, 0, 0.25)).eql(black));
+    try testing.expect(p.at(V.point(0.25, 0, 0.75)).eql(black));
+    try testing.expect(p.at(V.point(0.75, 0, 0.75)).eql(white));
+    // Height makes no difference to it, and neither does which unit square
+    // the point lies in.
+    try testing.expect(p.at(V.point(1.25, 9, 3.25)).eql(white));
+    try testing.expect(p.at(V.point(-0.75, 0, -0.75)).eql(white));
+}
+
+test "a spherical mapping runs u round the equator and v up the poles" {
+    const p = Pat.uvCheckers(.spherical, 4, 2, white, black);
+    // Round the equator, a quarter turn at a time: the squares alternate.
+    try testing.expect(p.at(V.point(0, 0, -1)).eql(black));
+    try testing.expect(p.at(V.point(1, 0, 0)).eql(white));
+    try testing.expect(p.at(V.point(0, 0, 1)).eql(black));
+    try testing.expect(p.at(V.point(-1, 0, 0)).eql(white));
+    // The two poles are on opposite sides of the one division in v.
+    try testing.expect(!p.at(V.point(0, 1, 0)).eql(p.at(V.point(0, -1, 0))));
+}
+
+test "a cylindrical mapping runs u round the side and v up it" {
+    const p = Pat.uvCheckers(.cylindrical, 2, 2, white, black);
+    const front_low = p.at(V.point(0, 0.25, -1));
+    // Half a turn away, and half a unit higher: each flips the square.
+    try testing.expect(!p.at(V.point(0, 0.25, 1)).eql(front_low));
+    try testing.expect(!p.at(V.point(0, 0.75, -1)).eql(front_low));
+    try testing.expect(p.at(V.point(0, 0.75, 1)).eql(front_low));
+}
+
+test "a mapped pattern is moved by its own transformation" {
+    var p = Pat.uvCheckers(.planar, 2, 2, white, black);
+    try testing.expect(p.atObject(V.point(0.25, 0, 0.25)).eql(white));
+    // Stretched to twice its size, what fell in the first square now falls
+    // in the same square at half the coordinates.
+    p.setTransform(Tf.scaling(2, 2, 2));
+    try testing.expect(p.atObject(V.point(0.5, 0, 0.5)).eql(white));
+    try testing.expect(p.atObject(V.point(1.5, 0, 0.5)).eql(black));
+}
+
+test "mapped patterns differ when only their mapping does" {
+    const a = Pat.uvCheckers(.spherical, 4, 2, white, black);
+    const b = Pat.uvCheckers(.cylindrical, 4, 2, white, black);
+    const c = Pat.uvCheckers(.spherical, 8, 2, white, black);
+    try testing.expect(!a.eql(b));
+    try testing.expect(!a.eql(c));
+    try testing.expect(a.eql(a));
+}
+
+test "mapped patterns are evaluated at comptime" {
+    comptime {
+        @setEvalBranchQuota(20_000);
+        const p = Pat.uvCheckers(.spherical, 4, 2, white, black);
+        try testing.expect(p.at(V.point(0, 0, -1)).eql(black));
+        try testing.expect(p.at(V.point(1, 0, 0)).eql(white));
     }
 }

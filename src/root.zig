@@ -51,6 +51,7 @@ pub const patterns = @import("demo/patterns.zig");
 pub const sphere_cast = @import("demo/sphere_cast.zig");
 pub const soft_shadows = @import("demo/soft_shadows.zig");
 pub const focal_blur = @import("demo/focal_blur.zig");
+pub const texture_maps = @import("demo/texture_maps.zig");
 pub const gallery = @import("demo/gallery.zig");
 
 /// Generic 4-tuple, parameterized by float type.
@@ -204,6 +205,7 @@ const covered_sources = [_][]const u8{
     "demo/sphere_cast.zig",
     "demo/soft_shadows.zig",
     "demo/focal_blur.zig",
+    "demo/texture_maps.zig",
     "demo/gallery.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
@@ -248,6 +250,7 @@ test {
     _ = sphere_cast;
     _ = soft_shadows;
     _ = focal_blur;
+    _ = texture_maps;
     _ = gallery;
 }
 
