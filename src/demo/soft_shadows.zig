@@ -107,6 +107,9 @@ pub fn Scene(comptime T: type) type {
         /// soft rims are widest.
         pub fn camera(width: usize, height: usize) Cam {
             var c = Cam.init(width, height, std.math.pi / 3.0);
+            // The balls' outlines are what the shadows are read against, so
+            // they are worth four rays a pixel rather than one.
+            c.supersample = 2;
             c.transform = Tf.view(
                 V.point(0, 1.6, -5),
                 V.point(0, 0.9, 0),

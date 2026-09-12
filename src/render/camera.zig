@@ -33,6 +33,13 @@ pub fn Camera(comptime T: type) type {
         field_of_view: T,
         /// World to camera space; usually a view transformation.
         transform: M = M.identity,
+        /// How finely each pixel is divided when it is sampled: one ray
+        /// through the middle at one, and `n` by `n` rays at `n`. A pixel is
+        /// not a point, and a single ray through its middle has to answer for
+        /// the whole of it, which turns a diagonal edge into a staircase.
+        /// Sampling the pixel in several places and averaging the answers
+        /// lets an edge land part way between the colours it divides.
+        supersample: usize = 1,
 
         pub fn init(hsize: usize, vsize: usize, field_of_view: T) Self {
             return .{ .hsize = hsize, .vsize = vsize, .field_of_view = field_of_view };
@@ -63,6 +70,7 @@ pub fn Camera(comptime T: type) type {
             half_width: T,
             half_height: T,
             pixel_size: T,
+            supersample: usize,
 
             fn init(camera: Self) CameraError!Prepared {
                 if (camera.hsize == 0 or camera.vsize == 0) return error.InvalidDimensions;
@@ -77,14 +85,39 @@ pub fn Camera(comptime T: type) type {
                     .half_width = half_width,
                     .half_height = half_height,
                     .pixel_size = half_width * 2 / @as(T, @floatFromInt(camera.hsize)),
+                    .supersample = @max(1, camera.supersample),
                 };
             }
 
-            fn rayForPixel(self: Prepared, x: usize, y: usize) Ray {
-                const world_x = self.half_width - (@as(T, @floatFromInt(x)) + 0.5) * self.pixel_size;
-                const world_y = self.half_height - (@as(T, @floatFromInt(y)) + 0.5) * self.pixel_size;
+            /// The ray through the point `u` and `v` of the way across the
+            /// pixel; half and half is its middle.
+            fn rayWithin(self: Prepared, x: usize, y: usize, u: T, v: T) Ray {
+                const world_x = self.half_width - (@as(T, @floatFromInt(x)) + u) * self.pixel_size;
+                const world_y = self.half_height - (@as(T, @floatFromInt(y)) + v) * self.pixel_size;
                 const pixel = self.inverse.mulTuple(Point.point(world_x, world_y, -1));
                 return Ray.init(self.origin, pixel.sub(self.origin).normalize());
+            }
+
+            fn rayForPixel(self: Prepared, x: usize, y: usize) Ray {
+                return self.rayWithin(x, y, 0.5, 0.5);
+            }
+
+            /// What the eye sees of one whole pixel: the average of the rays
+            /// cast through an evenly spread grid of points inside it.
+            fn colorForPixel(self: Prepared, world: World, x: usize, y: usize) World.TraceError!World.C {
+                if (self.supersample == 1) return world.colorAt(self.rayForPixel(x, y));
+
+                const n = self.supersample;
+                const step = 1 / @as(T, @floatFromInt(n));
+                var sum = World.C.black;
+                for (0..n) |j| {
+                    for (0..n) |i| {
+                        const u = (@as(T, @floatFromInt(i)) + 0.5) * step;
+                        const v = (@as(T, @floatFromInt(j)) + 0.5) * step;
+                        sum = sum.add(try world.colorAt(self.rayWithin(x, y, u, v)));
+                    }
+                }
+                return sum.div(@floatFromInt(n * n));
             }
         };
 
@@ -122,7 +155,7 @@ pub fn Camera(comptime T: type) type {
 
         fn renderRow(prepared: Prepared, world: World, image: Image, y: usize) World.TraceError!void {
             for (0..image.width) |x| {
-                image.writePixel(x, y, try world.colorAt(prepared.rayForPixel(x, y)));
+                image.writePixel(x, y, try prepared.colorForPixel(world, x, y));
             }
         }
 
@@ -357,5 +390,61 @@ test "cameras cast rays at comptime" {
         const r = prepared.rayForPixel(100, 50);
         try testing.expect(r.direction.eql(V.vector(0, 0, -1)));
         try testing.expect(prepared.rayForPixel(0, 0).direction.eql(c.rayForPixel(0, 0).?.direction));
+    }
+}
+
+test "a supersampled pixel is the average of the rays cast through it" {
+    const objects = [_]Sh{.{ .material = .{ .color = Col.init(1, 0, 0), .ambient = 1, .diffuse = 0, .specular = 0 } }};
+    const world: Cam.World = .{
+        .objects = &objects,
+        .light = light.Light.init(V.point(0, 0, -10), Col.white),
+    };
+
+    // A canvas wide enough that the ball covers part of one pixel and none of
+    // its neighbour: the edge pixel comes out between the ball and the black
+    // behind it, where a single ray through the middle would pick one or the
+    // other.
+    var sharp = Cam.init(9, 9, pi / 2.0);
+    sharp.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
+    var smooth = sharp;
+    smooth.supersample = 4;
+
+    var hard = try sharp.render(testing.allocator, world, .none);
+    defer hard.deinit(testing.allocator);
+    var soft = try smooth.render(testing.allocator, world, .none);
+    defer soft.deinit(testing.allocator);
+
+    var softened = false;
+    for (hard.pixels, soft.pixels) |a, b| {
+        if (a.eql(Col.black) or a.eql(Col.init(1, 0, 0))) {
+            if (!b.eql(a)) {
+                // Wherever the two differ it is because the pixel straddles
+                // the ball's outline, and so is part red and part black.
+                try testing.expect(b.red() > 0 and b.red() < 1);
+                softened = true;
+            }
+        }
+    }
+    try testing.expect(softened);
+}
+
+test "one sample per pixel is the ray through its middle" {
+    const objects = [_]Sh{.{ .material = .{ .color = Col.init(0.8, 1.0, 0.6), .diffuse = 0.7, .specular = 0.2 } }};
+    const world: Cam.World = .{
+        .objects = &objects,
+        .light = light.Light.init(V.point(-10, 10, -10), Col.white),
+    };
+
+    var c = Cam.init(7, 5, pi / 2.0);
+    c.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
+    var plain = try c.render(testing.allocator, world, .none);
+    defer plain.deinit(testing.allocator);
+
+    // Zero is no sensible count of rays, so it is read as the single one.
+    c.supersample = 0;
+    var none = try c.render(testing.allocator, world, .none);
+    defer none.deinit(testing.allocator);
+    for (plain.pixels, none.pixels) |expected, actual| {
+        try testing.expectEqualDeep(expected, actual);
     }
 }
