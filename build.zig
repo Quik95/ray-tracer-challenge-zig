@@ -89,7 +89,12 @@ fn collectZigSources(
 
     var it = dir.iterate();
     while (it.next(io) catch std.debug.panic("unable to iterate {s}", .{dir_path})) |entry| {
-        const relative = b.pathJoin(&.{ prefix, entry.name });
+        // Joined with a forward slash rather than the host separator, so the
+        // listing matches `covered_sources` on Windows too.
+        const relative = if (prefix.len == 0)
+            b.dupe(entry.name)
+        else
+            b.fmt("{s}/{s}", .{ prefix, entry.name });
         switch (entry.kind) {
             .file => if (std.mem.endsWith(u8, entry.name, ".zig")) {
                 names.append(b.allocator, relative) catch @panic("OOM");
