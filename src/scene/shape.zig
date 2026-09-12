@@ -22,6 +22,7 @@ const matrix = @import("../math/matrix.zig");
 const plane_mod = @import("plane.zig");
 const ray_mod = @import("ray.zig");
 const sphere_mod = @import("sphere.zig");
+const triangle_mod = @import("triangle.zig");
 const tuple = @import("../math/tuple.zig");
 
 /// A shape in the world, over a float type.
@@ -44,6 +45,7 @@ pub fn Shape(comptime T: type) type {
             cube: cube_mod.Cube(T),
             cylinder: cylinder_mod.Cylinder(T),
             cone: cone_mod.Cone(T),
+            triangle: triangle_mod.Triangle(T),
             group: group_mod.Group(T),
         };
 
@@ -99,6 +101,24 @@ pub fn Shape(comptime T: type) type {
 
         pub fn cone() Self {
             return init(.{ .cone = .{} });
+        }
+
+        /// A flat triangle with the given corners.
+        pub fn triangle(p1: Point, p2: Point, p3: Point) Self {
+            return init(.{ .triangle = .init(p1, p2, p3) });
+        }
+
+        /// A triangle that shades as though a curved surface ran through it,
+        /// given the normal at each corner.
+        pub fn smoothTriangle(
+            p1: Point,
+            p2: Point,
+            p3: Point,
+            n1: Point,
+            n2: Point,
+            n3: Point,
+        ) Self {
+            return init(.{ .triangle = .smooth(p1, p2, p3, n1, n2, n3) });
         }
 
         /// A group over `children`, which the caller owns and keeps alive for
@@ -327,7 +347,15 @@ test "shape copies retain labels but intersections identify objects by pointer" 
 
 test "shape constructors work at comptime with default labels" {
     comptime {
-        for (.{ Sh.sphere(), Sh.plane(), Sh.cube(), Sh.cylinder(), Sh.cone(), Sh.glassSphere() }) |s| {
+        for (.{
+            Sh.sphere(),
+            Sh.plane(),
+            Sh.cube(),
+            Sh.cylinder(),
+            Sh.cone(),
+            Sh.glassSphere(),
+            Sh.triangle(V.point(0, 1, 0), V.point(-1, 0, 0), V.point(1, 0, 0)),
+        }) |s| {
             try testing.expectEqual(@as(usize, 0), s.id);
         }
     }
@@ -516,4 +544,39 @@ fn expectVector(expected: V, actual: V) !void {
     inline for (0..4) |i| {
         try testing.expectApproxEqAbs(expected.v[i], actual.v[i], 1e-4);
     }
+}
+
+test "a transformed triangle is met where it now stands" {
+    var s = Sh.triangle(V.point(0, 1, 0), V.point(-1, 0, 0), V.point(1, 0, 0));
+    s.setTransform(Tf.translation(0, 0, 4));
+
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try s.intersect(R.init(V.point(0, 0.5, 0), V.vector(0, 0, 1)), &buf);
+    try testing.expectEqual(@as(usize, 1), xs.len);
+    try testing.expectEqual(@as(f64, 4), xs[0].t);
+    // The face looks back down the z axis, towards where the ray came from.
+    try testing.expect(s.normalAt(V.point(0, 0.5, 4)).?.eql(V.vector(0, 0, -1)));
+}
+
+test "a smooth triangle in a group is shaded by its corner normals" {
+    var children = [_]Sh{Sh.smoothTriangle(
+        V.point(0, 1, 0),
+        V.point(-1, 0, 0),
+        V.point(1, 0, 0),
+        V.vector(0, 1, 0),
+        V.vector(-1, 0, 0),
+        V.vector(1, 0, 0),
+    )};
+    var g = Sh.group(&children);
+    g.setTransform(Tf.translation(0, 0, 5));
+    g.link();
+
+    var buf: [8]Sh.Hit = undefined;
+    const xs = try g.intersect(R.init(V.point(-0.2, 0.3, 0), V.vector(0, 0, 1)), &buf);
+    try testing.expectEqual(@as(usize, 1), xs.len);
+    try testing.expectEqual(@as(f64, 5), xs[0].t);
+
+    // The blend follows the shape out of the group and into the world.
+    const n = xs[0].object.normalAt(V.point(-0.2, 0.3, 5)).?;
+    try expectVector(V.vector(-0.5547, 0.83205, 0), n);
 }
