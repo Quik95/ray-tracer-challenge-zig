@@ -8,9 +8,10 @@
 
 const std = @import("std");
 const tuple = @import("tuple.zig");
+const float = @import("float.zig");
 
-const feq = tuple.feq;
-const epsilonOf = tuple.epsilonOf;
+const feq = float.feq;
+const epsilonOf = float.epsilonOf;
 
 /// An NxN matrix of `T`, stored row-major with each row a SIMD vector.
 pub fn Matrix(comptime T: type, comptime n: usize) type {
@@ -69,12 +70,12 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
             self.rows[row][col] = value;
         }
 
-        /// Element-wise comparison within EPSILON. Matrices arrive out of
-        /// inversions and long transform chains, so exact equality is useless.
+        /// Element-wise comparison, tolerating round-off error. Matrices arrive
+        /// out of inversions and long transform chains, so exact equality is
+        /// useless.
         pub fn eql(a: Self, b: Self) bool {
             for (a.rows, b.rows) |ra, rb| {
-                const diff = @abs(ra - rb);
-                if (!@reduce(.And, diff < @as(Row, @splat(epsilon)))) return false;
+                if (!@reduce(.And, float.vectorEql(T, n, ra, rb))) return false;
             }
             return true;
         }

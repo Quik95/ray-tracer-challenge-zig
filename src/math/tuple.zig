@@ -6,20 +6,17 @@
 //! load-bearing once tuples get multiplied by matrices.
 
 const std = @import("std");
+const float = @import("float.zig");
+
+/// Deciding when two floats are close enough is its own problem; tuples only
+/// apply the answer. Re-exported so the geometry can reach the tolerance it
+/// compares against without importing two modules for one number.
+pub const feq = float.feq;
+pub const epsilonOf = float.epsilonOf;
 
 /// Component selector. Used as a `comptime` argument so `get` compiles down to
 /// a plain vector element access with no runtime branch.
 pub const Axis = enum(u2) { x, y, z, w };
-
-/// Compare two floats for equivalence, tolerating round-off error.
-pub fn feq(comptime T: type, a: T, b: T) bool {
-    return @abs(a - b) < epsilonOf(T);
-}
-
-/// The book uses a single EPSILON of 0.00001 regardless of precision.
-pub fn epsilonOf(comptime T: type) T {
-    return 1e-5;
-}
 
 /// A 4-component tuple backed by a SIMD vector, generic over the float type.
 pub fn Tuple(comptime T: type) type {
@@ -85,10 +82,9 @@ pub fn Tuple(comptime T: type) type {
             return feq(T, self.w(), 0);
         }
 
-        /// Component-wise comparison within EPSILON.
+        /// Component-wise comparison, tolerating round-off error.
         pub fn eql(a: Self, b: Self) bool {
-            const diff = @abs(a.v - b.v);
-            return @reduce(.And, diff < @as(Repr, @splat(epsilon)));
+            return @reduce(.And, float.vectorEql(T, 4, a.v, b.v));
         }
 
         /// Adding a vector to a point moves the point along the vector. The w

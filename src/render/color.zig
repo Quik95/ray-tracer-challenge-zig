@@ -7,7 +7,7 @@
 //! where the image is written out.
 
 const std = @import("std");
-const tuple = @import("../math/tuple.zig");
+const float = @import("../math/float.zig");
 
 /// Component selector, mirroring `tuple.Axis`.
 pub const Channel = enum(u2) { red, green, blue };
@@ -25,7 +25,7 @@ pub fn Color(comptime T: type) type {
         /// the same register width as a tuple; the fourth lane is unused.
         pub const Repr = @Vector(4, T);
         pub const Scalar = T;
-        pub const epsilon: T = tuple.epsilonOf(T);
+        pub const epsilon: T = float.epsilonOf(T);
 
         pub const black: Self = init(0, 0, 0);
         pub const white: Self = init(1, 1, 1);
@@ -53,11 +53,13 @@ pub fn Color(comptime T: type) type {
             return self.get(.blue);
         }
 
-        /// Component-wise comparison within EPSILON.
+        /// Component-wise comparison, tolerating round-off error. The fourth
+        /// lane is padding and carries no channel, so it is left out.
         pub fn eql(a: Self, b: Self) bool {
-            const diff = @abs(a.v - b.v);
-            const rgb: @Vector(3, T) = @shuffle(T, diff, undefined, @Vector(3, i32){ 0, 1, 2 });
-            return @reduce(.And, rgb < @as(@Vector(3, T), @splat(epsilon)));
+            const lanes = @Vector(3, i32){ 0, 1, 2 };
+            const ra: @Vector(3, T) = @shuffle(T, a.v, undefined, lanes);
+            const rb: @Vector(3, T) = @shuffle(T, b.v, undefined, lanes);
+            return @reduce(.And, float.vectorEql(T, 3, ra, rb));
         }
 
         /// Combining two light sources adds their colors.

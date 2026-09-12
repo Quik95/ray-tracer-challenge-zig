@@ -7,6 +7,7 @@ const std = @import("std");
 // `std.testing.refAllDeclsRecursive`; the maintainers' advice is to list
 // declarations explicitly, so every module of this package is named here.
 // Numbers and geometry.
+pub const float = @import("math/float.zig");
 pub const tuple = @import("math/tuple.zig");
 pub const matrix = @import("math/matrix.zig");
 pub const transform = @import("math/transform.zig");
@@ -168,6 +169,7 @@ pub const Image = canvas.Image;
 /// fails the suite instead of silently skipping its tests.
 const covered_sources = [_][]const u8{
     "root.zig",
+    "math/float.zig",
     "math/tuple.zig",
     "math/matrix.zig",
     "math/transform.zig",
