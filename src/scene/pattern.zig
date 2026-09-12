@@ -14,6 +14,7 @@ const std = @import("std");
 const color_mod = @import("../render/color.zig");
 const matrix = @import("../math/matrix.zig");
 const tuple = @import("../math/tuple.zig");
+const float = @import("../math/float.zig");
 
 /// A surface pattern, over a float type.
 pub fn Pattern(comptime T: type) type {
@@ -39,6 +40,24 @@ pub fn Pattern(comptime T: type) type {
                 return if (even) self.a else self.b;
             }
         };
+
+        /// Which cell of the unit grid a coordinate falls in.
+        ///
+        /// Not simply `@floor`. A surface laid along a cell boundary is the
+        /// ordinary case — a floor sits at y = 0, which is a boundary in y —
+        /// and the coordinate that arrives here is that zero plus whatever
+        /// round-off the ray's own arithmetic left behind, a hair either side
+        /// of it. `@floor` is discontinuous exactly there and reads a
+        /// negative hair as a whole cell down, so the surface comes out
+        /// speckled with pixels belonging to its neighbour.
+        ///
+        /// Pulling a coordinate that is within tolerance of a whole number
+        /// onto that number first makes the whole surface agree. It moves the
+        /// boundaries by the width of the tolerance, which no scene can see.
+        inline fn cellOf(v: T) T {
+            const whole = @round(v);
+            return if (float.feq(T, v, whole)) whole else @floor(v);
+        }
 
         /// How a point on a surface is read as a place on a flat image.
         ///
@@ -89,7 +108,7 @@ pub fn Pattern(comptime T: type) type {
             /// The part of a number past its whole, kept positive so the
             /// pattern does not mirror itself about the origin.
             fn fract(v: T) T {
-                return v - @floor(v);
+                return v - cellOf(v);
             }
         };
 
@@ -108,7 +127,7 @@ pub fn Pattern(comptime T: type) type {
 
             fn at(self: UvCheckers, p: Point) C {
                 const u, const v = self.map.at(p);
-                const squares = @floor(u * self.u) + @floor(v * self.v);
+                const squares = cellOf(u * self.u) + cellOf(v * self.v);
                 return self.pair.pick(@mod(squares, 2) == 0);
             }
         };
@@ -180,14 +199,14 @@ pub fn Pattern(comptime T: type) type {
         /// The colour this rule gives a point already in pattern space.
         pub fn at(self: Self, p: Point) C {
             return switch (self.kind) {
-                .stripes => |pair| pair.pick(isEven(@floor(p.x()))),
-                .rings => |pair| pair.pick(isEven(@floor(@sqrt(p.x() * p.x() + p.z() * p.z())))),
+                .stripes => |pair| pair.pick(isEven(cellOf(p.x()))),
+                .rings => |pair| pair.pick(isEven(cellOf(@sqrt(p.x() * p.x() + p.z() * p.z())))),
                 // The sum of the three floors flips parity whenever any one
                 // of them does, which is what makes neighbouring cubes differ.
-                .checkers => |pair| pair.pick(isEven(@floor(p.x()) + @floor(p.y()) + @floor(p.z()))),
+                .checkers => |pair| pair.pick(isEven(cellOf(p.x()) + cellOf(p.y()) + cellOf(p.z()))),
                 // The fractional part of x walks from a to b and snaps back,
                 // so the blend repeats once per unit.
-                .gradient => |pair| pair.a.add(pair.b.sub(pair.a).mul(p.x() - @floor(p.x()))),
+                .gradient => |pair| pair.a.add(pair.b.sub(pair.a).mul(p.x() - cellOf(p.x()))),
                 // Where a solid checker asks where in space the point is,
                 // this one asks where on the surface it is.
                 .uv_checkers => |squares| squares.at(p),
@@ -367,4 +386,23 @@ test "mapped patterns are evaluated at comptime" {
         try testing.expect(p.at(V.point(0, 0, -1)).eql(black));
         try testing.expect(p.at(V.point(1, 0, 0)).eql(white));
     }
+}
+
+test "a surface lying along a cell boundary takes one colour, not two" {
+    // A floor sits at y = 0, and the y that reaches the pattern is that zero
+    // plus the round-off of the ray arithmetic that found the point. Flooring
+    // it directly would send the negative side a whole cell down and speckle
+    // the floor with its neighbour's colour.
+    const p = Pat.checkers(white, black);
+    const wanted = p.at(V.point(0.5, 0, 0.5));
+    for ([_]f64{ 0, -0.0, 1e-17, -1e-17, 1e-12, -1e-12 }) |y| {
+        try testing.expect(p.at(V.point(0.5, y, 0.5)).eql(wanted));
+    }
+}
+
+test "cells still change where the coordinate really crosses a boundary" {
+    const p = Pat.stripes(white, black);
+    try testing.expect(p.at(V.point(0.5, 0, 0)).eql(white));
+    try testing.expect(p.at(V.point(1.5, 0, 0)).eql(black));
+    try testing.expect(p.at(V.point(-0.5, 0, 0)).eql(black));
 }
