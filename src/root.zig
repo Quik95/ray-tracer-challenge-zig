@@ -22,6 +22,7 @@ pub const cylinder = @import("scene/cylinder.zig");
 pub const group = @import("scene/group.zig");
 pub const cone = @import("scene/cone.zig");
 pub const triangle = @import("scene/triangle.zig");
+pub const csg = @import("scene/csg.zig");
 pub const obj = @import("scene/obj.zig");
 pub const shape = @import("scene/shape.zig");
 pub const light = @import("scene/light.zig");
@@ -42,6 +43,7 @@ pub const cubes = @import("demo/cubes.zig");
 pub const cylinders = @import("demo/cylinders.zig");
 pub const hexagon = @import("demo/hexagon.zig");
 pub const triangles = @import("demo/triangles.zig");
+pub const carving = @import("demo/carving.zig");
 pub const room = @import("demo/room.zig");
 pub const planes = @import("demo/planes.zig");
 pub const patterns = @import("demo/patterns.zig");
@@ -111,6 +113,11 @@ pub const Triangle = triangle.Triangle;
 /// The triangle geometry at the precision the ray tracer uses.
 pub const Tri = triangle.Tri;
 
+/// Generic pair of shapes combined by a set operation.
+pub const Csg = csg.Csg;
+/// The CSG shape at the precision the ray tracer uses.
+pub const Cs = csg.Cs;
+
 /// Generic reader for Wavefront OBJ models, parameterized by float type.
 pub const Obj = obj.Obj;
 /// The OBJ reader at the precision the ray tracer uses.
@@ -169,6 +176,7 @@ const covered_sources = [_][]const u8{
     "scene/group.zig",
     "scene/cone.zig",
     "scene/triangle.zig",
+    "scene/csg.zig",
     "scene/obj.zig",
     "scene/shape.zig",
     "scene/light.zig",
@@ -185,6 +193,7 @@ const covered_sources = [_][]const u8{
     "demo/cylinders.zig",
     "demo/hexagon.zig",
     "demo/triangles.zig",
+    "demo/carving.zig",
     "demo/room.zig",
     "demo/planes.zig",
     "demo/patterns.zig",
@@ -212,6 +221,7 @@ test {
     _ = group;
     _ = cone;
     _ = triangle;
+    _ = csg;
     _ = obj;
     _ = shape;
     _ = light;
@@ -224,6 +234,7 @@ test {
     _ = cylinders;
     _ = hexagon;
     _ = triangles;
+    _ = carving;
     _ = room;
     _ = planes;
     _ = patterns;

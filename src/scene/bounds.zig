@@ -73,6 +73,18 @@ pub fn Bounds(comptime T: type) type {
             };
         }
 
+        /// The box the two have in common, and empty where they have none.
+        /// What lies outside either box lies outside their overlap, which is
+        /// what bounds a CSG intersection.
+        pub fn overlap(self: Self, other: Self) Self {
+            if (self.isEmpty() or other.isEmpty()) return empty;
+            const box: Self = .{
+                .min = .{ .v = @max(self.min.v, other.min.v) },
+                .max = .{ .v = @min(self.max.v, other.max.v) },
+            };
+            return if (box.isEmpty()) empty else box;
+        }
+
         pub fn contains(self: Self, p: Point) bool {
             return @reduce(.And, self.min.v <= p.v) and @reduce(.And, p.v <= self.max.v);
         }
@@ -187,6 +199,18 @@ test "merging takes the smallest box holding both, and ignores an empty one" {
 
     try testing.expect(a.merge(.empty).min.eql(a.min));
     try testing.expect(B.empty.merge(a).max.eql(a.max));
+}
+
+test "overlapping keeps only what both boxes hold" {
+    const a = B.centered(1, 1, 1);
+    const b = B.init(V.point(0, 0, 0), V.point(4, 1, 3));
+    const shared = a.overlap(b);
+    try testing.expect(shared.min.eql(V.point(0, 0, 0)));
+    try testing.expect(shared.max.eql(V.point(1, 1, 1)));
+
+    // Boxes that never meet share nothing, and neither does an empty one.
+    try testing.expect(a.overlap(B.init(V.point(5, 5, 5), V.point(6, 6, 6))).isEmpty());
+    try testing.expect(a.overlap(.empty).isEmpty());
 }
 
 test "a turned box is measured by where all eight corners land" {

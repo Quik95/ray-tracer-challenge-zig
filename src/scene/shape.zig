@@ -14,6 +14,7 @@ const std = @import("std");
 const intersection = @import("intersection.zig");
 const bounds_mod = @import("bounds.zig");
 const cone_mod = @import("cone.zig");
+const csg_mod = @import("csg.zig");
 const cube_mod = @import("cube.zig");
 const cylinder_mod = @import("cylinder.zig");
 const group_mod = @import("group.zig");
@@ -47,12 +48,13 @@ pub fn Shape(comptime T: type) type {
             cone: cone_mod.Cone(T),
             triangle: triangle_mod.Triangle(T),
             group: group_mod.Group(T),
+            csg: csg_mod.Csg(T),
         };
 
         /// The most crossings any one surface among them can report. A group
-        /// reports none of its own: it is met only through its children, and
-        /// how many of those there are is the scene's business rather than the
-        /// geometry's.
+        /// and a CSG shape report none of their own: they are met only through
+        /// their children, and how many of those there are is the scene's
+        /// business rather than the geometry's.
         pub const max_hits = blk: {
             var most: usize = 0;
             for (@typeInfo(Geometry).@"union".fields) |field| {
@@ -60,6 +62,13 @@ pub fn Shape(comptime T: type) type {
             }
             break :blk most;
         };
+
+        /// How many crossings of one CSG tree `nearestHit` will collect
+        /// before giving up on it. Unlike every other shape, a CSG shape
+        /// cannot say which crossing is nearest without seeing them all, and
+        /// that list has to live somewhere; enough room for a tree of a
+        /// reasonable size, on a stack that recursion is already using.
+        pub const max_csg_hits = 64;
 
         pub const IntersectError = error{IntersectionOverflow};
 
@@ -128,6 +137,27 @@ pub fn Shape(comptime T: type) type {
             return init(.{ .group = group_mod.Group(T).init(children) });
         }
 
+        /// Two shapes combined by a set operation. `children` holds exactly
+        /// two of them, left first, and is the caller's the same way a
+        /// group's children are; `link` is what ties them to the result.
+        pub fn csg(operation: csg_mod.Csg(T).Operation, children: []Self) Self {
+            return init(.{ .csg = csg_mod.Csg(T).init(operation, children) });
+        }
+
+        /// Whether `other` is this shape or one of the shapes beneath it.
+        /// Shapes are compared by identity, as everywhere else in the tracer.
+        pub fn includes(self: *const Self, other: *const Self) bool {
+            return switch (self.geometry) {
+                .group => |g| for (g.children) |*child| {
+                    if (child.includes(other)) break true;
+                } else false,
+                .csg => |c| for (c.children) |*child| {
+                    if (child.includes(other)) break true;
+                } else false,
+                else => self == other,
+            };
+        }
+
         /// Tell every shape below this one which group it belongs to.
         ///
         /// A child cannot be handed its parent when the group is built, since
@@ -149,6 +179,15 @@ pub fn Shape(comptime T: type) type {
                         box = box.merge(child.parentBounds());
                     }
                     g.box = box;
+                },
+                .csg => |*c| {
+                    for (c.children) |*child| {
+                        child.parent = self;
+                        child.link();
+                    }
+                    // Only now that both operands stand where they will stay
+                    // is there a combined shape to draw a box around.
+                    c.box = c.boundsOf();
                 },
                 else => {},
             }
@@ -257,6 +296,20 @@ pub fn Shape(comptime T: type) type {
                     Hit.sort(found);
                     return found;
                 },
+                // A CSG shape is met through its operands too, and then the
+                // operation says which of those crossings are on the combined
+                // surface and which are buried inside it. Ordering them is
+                // what makes the answer readable: the filter works out where
+                // the ray is by counting the surfaces it has passed through.
+                .csg => |c| {
+                    if (c.isEmpty() or !c.box.intersects(local)) return buf[0..0];
+                    for (c.children) |*child| {
+                        n += (try child.intersect(local, buf[n..])).len;
+                    }
+                    const found = buf[0..n];
+                    Hit.sort(found);
+                    return c.filter(found);
+                },
                 inline else => |geometry| for (geometry.localIntersect(local).items()) |t| {
                     if (n == buf.len) return error.IntersectionOverflow;
                     buf[n] = Hit.init(t, self);
@@ -270,6 +323,17 @@ pub fn Shape(comptime T: type) type {
         /// without collecting the rest — and so without a buffer to collect
         /// them into.
         pub fn nearestHit(self: *const Self, world_ray: Ray) ?Hit {
+            // A CSG shape is the one exception: whether a crossing is on the
+            // combined surface at all depends on the crossings around it, so
+            // there is no finding the nearest one without collecting them.
+            // The scratch buffer is the cost of that, and a tree that fills
+            // it is treated as missed rather than shaded from a partial list.
+            if (self.geometry == .csg) {
+                var scratch: [max_csg_hits]Hit = undefined;
+                const xs = self.intersect(world_ray, &scratch) catch return null;
+                return Hit.hit(xs);
+            }
+
             const local = self.localRay(world_ray) orelse return null;
 
             var closest: ?Hit = null;
@@ -281,6 +345,8 @@ pub fn Shape(comptime T: type) type {
                         if (closest == null or found.t < closest.?.t) closest = found;
                     }
                 },
+                // Answered above, before the ray was carried in at all.
+                .csg => unreachable,
                 inline else => |geometry| for (geometry.localIntersect(local).items()) |t| {
                     if (t < 0) continue;
                     if (closest == null or t < closest.?.t) closest = Hit.init(t, self);
@@ -295,7 +361,7 @@ pub fn Shape(comptime T: type) type {
         pub fn normalAt(self: *const Self, world_point: Point) ?Point {
             const local_point = self.worldToObject(world_point) orelse return null;
             const local_normal = switch (self.geometry) {
-                .group => return null,
+                .group, .csg => return null,
                 inline else => |geometry| geometry.localNormalAt(local_point),
             };
             return self.normalToWorld(local_normal);
