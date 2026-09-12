@@ -6,6 +6,7 @@
 const std = @import("std");
 const color_mod = @import("../render/color.zig");
 const light_mod = @import("light.zig");
+const noise = @import("../math/noise.zig");
 const ray_mod = @import("ray.zig");
 const shape_mod = @import("shape.zig");
 const transform = @import("../math/transform.zig");
@@ -103,39 +104,14 @@ pub fn World(comptime T: type) type {
             // count the same places on the light and leave rings where the
             // count steps up. Where that somewhere is comes from the point
             // itself, which keeps the same scene rendering to the same image.
-            var noise = scramble(point);
+            var scatter = noise.Stream.init(.{ point.x(), point.y(), point.z() });
             var lit: usize = 0;
             for (0..samples) |i| {
-                noise = mix(noise);
-                const u_off = unitFrom(noise);
-                noise = mix(noise);
-                const v_off = unitFrom(noise);
+                const u_off = scatter.unit(T);
+                const v_off = scatter.unit(T);
                 if (!self.isOccluded(light.sampleWithin(i, u_off, v_off), point)) lit += 1;
             }
             return @as(T, @floatFromInt(lit)) / @as(T, @floatFromInt(samples));
-        }
-
-        /// The three coordinates of a point, stirred into one number.
-        fn scramble(point: Object.Point) u64 {
-            var h: u64 = 0x9e3779b97f4a7c15;
-            inline for (.{ point.x(), point.y(), point.z() }) |v| {
-                h = mix(h ^ @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(v))))));
-            }
-            return h;
-        }
-
-        /// One round of splitmix64: cheap, and enough to keep neighbouring
-        /// points from agreeing on where to sample.
-        fn mix(x: u64) u64 {
-            var z = x +% 0x9e3779b97f4a7c15;
-            z = (z ^ (z >> 30)) *% 0xbf58476d1ce4e5b9;
-            z = (z ^ (z >> 27)) *% 0x94d049bb133111eb;
-            return z ^ (z >> 31);
-        }
-
-        /// The top bits of a stirred number, read as a fraction of a cell.
-        fn unitFrom(x: u64) T {
-            return @as(T, @floatFromInt(x >> 40)) / @as(T, 1 << 24);
         }
 
         /// Shade a prepared crossing with this world's light.

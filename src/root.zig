@@ -10,6 +10,7 @@ const std = @import("std");
 pub const tuple = @import("math/tuple.zig");
 pub const matrix = @import("math/matrix.zig");
 pub const transform = @import("math/transform.zig");
+pub const noise = @import("math/noise.zig");
 
 // What a ray meets, and what it meets it with.
 pub const ray = @import("scene/ray.zig");
@@ -49,6 +50,7 @@ pub const planes = @import("demo/planes.zig");
 pub const patterns = @import("demo/patterns.zig");
 pub const sphere_cast = @import("demo/sphere_cast.zig");
 pub const soft_shadows = @import("demo/soft_shadows.zig");
+pub const focal_blur = @import("demo/focal_blur.zig");
 pub const gallery = @import("demo/gallery.zig");
 
 /// Generic 4-tuple, parameterized by float type.
@@ -167,6 +169,7 @@ const covered_sources = [_][]const u8{
     "math/tuple.zig",
     "math/matrix.zig",
     "math/transform.zig",
+    "math/noise.zig",
     "scene/ray.zig",
     "scene/intersection.zig",
     "scene/bounds.zig",
@@ -200,6 +203,7 @@ const covered_sources = [_][]const u8{
     "demo/patterns.zig",
     "demo/sphere_cast.zig",
     "demo/soft_shadows.zig",
+    "demo/focal_blur.zig",
     "demo/gallery.zig",
     // Root of the executable module, covered by its own test binary.
     "main.zig",
@@ -211,6 +215,7 @@ test {
     _ = canvas;
     _ = matrix;
     _ = transform;
+    _ = noise;
     _ = projectile;
     _ = clock;
     _ = ray;
@@ -242,6 +247,7 @@ test {
     _ = patterns;
     _ = sphere_cast;
     _ = soft_shadows;
+    _ = focal_blur;
     _ = gallery;
 }
 

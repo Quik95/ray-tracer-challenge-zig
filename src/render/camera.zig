@@ -9,6 +9,7 @@
 const std = @import("std");
 const canvas_mod = @import("canvas.zig");
 const matrix = @import("../math/matrix.zig");
+const noise = @import("../math/noise.zig");
 const ray_mod = @import("../scene/ray.zig");
 const tuple = @import("../math/tuple.zig");
 const world_mod = @import("../scene/world.zig");
@@ -40,6 +41,15 @@ pub fn Camera(comptime T: type) type {
         /// Sampling the pixel in several places and averaging the answers
         /// lets an edge land part way between the colours it divides.
         supersample: usize = 1,
+        /// How wide the hole is that light enters through. At zero the camera
+        /// is a pinhole and the whole scene is in focus at once; widen it and
+        /// light reaches a pixel from several directions, so that whatever is
+        /// not at the focal distance is smeared over its neighbours.
+        aperture: T = 0,
+        /// How far ahead of the camera things come out sharp. Rays cast from
+        /// anywhere on the aperture cross at that distance, so the subject of
+        /// the picture belongs there.
+        focus: T = 1,
 
         pub fn init(hsize: usize, vsize: usize, field_of_view: T) Self {
             return .{ .hsize = hsize, .vsize = vsize, .field_of_view = field_of_view };
@@ -71,12 +81,21 @@ pub fn Camera(comptime T: type) type {
             half_height: T,
             pixel_size: T,
             supersample: usize,
+            aperture: T,
+            focus: T,
+            /// The camera's own sideways and upwards directions, in world
+            /// space: where a point on the aperture moves the ray's start.
+            right: Point,
+            up: Point,
 
             fn init(camera: Self) CameraError!Prepared {
                 if (camera.hsize == 0 or camera.vsize == 0) return error.InvalidDimensions;
                 if (!std.math.isFinite(camera.field_of_view) or
                     camera.field_of_view <= 0 or camera.field_of_view >= std.math.pi)
                     return error.InvalidFieldOfView;
+                if (!std.math.isFinite(camera.aperture) or camera.aperture < 0 or
+                    !std.math.isFinite(camera.focus) or camera.focus <= 0)
+                    return error.InvalidLens;
                 const inverse = camera.transform.inverse() catch return error.NonInvertibleCamera;
                 const half_width, const half_height = camera.halfExtents();
                 return .{
@@ -86,42 +105,73 @@ pub fn Camera(comptime T: type) type {
                     .half_height = half_height,
                     .pixel_size = half_width * 2 / @as(T, @floatFromInt(camera.hsize)),
                     .supersample = @max(1, camera.supersample),
+                    .aperture = camera.aperture,
+                    .focus = camera.focus,
+                    .right = inverse.mulTuple(Point.vector(1, 0, 0)),
+                    .up = inverse.mulTuple(Point.vector(0, 1, 0)),
                 };
             }
 
             /// The ray through the point `u` and `v` of the way across the
-            /// pixel; half and half is its middle.
-            fn rayWithin(self: Prepared, x: usize, y: usize, u: T, v: T) Ray {
+            /// pixel; half and half is its middle. It starts `lens_x` and
+            /// `lens_y` from the middle of the aperture, and is aimed so that
+            /// it crosses the focal plane where a ray from the middle would:
+            /// what stands there is seen the same way from all of the
+            /// aperture and stays sharp, and everything else does not.
+            fn rayWithin(self: Prepared, x: usize, y: usize, u: T, v: T, lens_x: T, lens_y: T) Ray {
                 const world_x = self.half_width - (@as(T, @floatFromInt(x)) + u) * self.pixel_size;
                 const world_y = self.half_height - (@as(T, @floatFromInt(y)) + v) * self.pixel_size;
                 const pixel = self.inverse.mulTuple(Point.point(world_x, world_y, -1));
-                return Ray.init(self.origin, pixel.sub(self.origin).normalize());
+
+                // The canvas sits one unit ahead, so the focal plane is the
+                // same direction carried `focus` times as far.
+                const target = self.origin.add(pixel.sub(self.origin).mul(self.focus));
+                const start = self.origin.add(self.right.mul(lens_x)).add(self.up.mul(lens_y));
+                return Ray.init(start, target.sub(start).normalize());
             }
 
             fn rayForPixel(self: Prepared, x: usize, y: usize) Ray {
-                return self.rayWithin(x, y, 0.5, 0.5);
+                return self.rayWithin(x, y, 0.5, 0.5, 0, 0);
+            }
+
+            /// A place on the round aperture, from two fractions of one. The
+            /// square root spreads the places evenly over the disc rather
+            /// than crowding them at its middle.
+            fn lensPoint(self: Prepared, a: T, b: T) struct { T, T } {
+                if (self.aperture == 0) return .{ 0, 0 };
+                const radius = self.aperture / 2 * @sqrt(a);
+                const angle = 2 * std.math.pi * b;
+                return .{ radius * @cos(angle), radius * @sin(angle) };
             }
 
             /// What the eye sees of one whole pixel: the average of the rays
             /// cast through an evenly spread grid of points inside it.
             fn colorForPixel(self: Prepared, world: World, x: usize, y: usize) World.TraceError!World.C {
-                if (self.supersample == 1) return world.colorAt(self.rayForPixel(x, y));
+                if (self.supersample == 1 and self.aperture == 0) {
+                    return world.colorAt(self.rayForPixel(x, y));
+                }
 
                 const n = self.supersample;
                 const step = 1 / @as(T, @floatFromInt(n));
+                // Where on the aperture each of those rays starts is scattered
+                // from the pixel's own position, so that a wide aperture comes
+                // out as blur rather than as a lattice of ghosts.
+                var scatter = noise.Stream.init(.{ x, y });
                 var sum = World.C.black;
                 for (0..n) |j| {
                     for (0..n) |i| {
                         const u = (@as(T, @floatFromInt(i)) + 0.5) * step;
                         const v = (@as(T, @floatFromInt(j)) + 0.5) * step;
-                        sum = sum.add(try world.colorAt(self.rayWithin(x, y, u, v)));
+                        const lens_x, const lens_y =
+                            self.lensPoint(scatter.unit(T), scatter.unit(T));
+                        sum = sum.add(try world.colorAt(self.rayWithin(x, y, u, v, lens_x, lens_y)));
                     }
                 }
                 return sum.div(@floatFromInt(n * n));
             }
         };
 
-        pub const CameraError = error{ InvalidDimensions, InvalidFieldOfView, NonInvertibleCamera };
+        pub const CameraError = error{ InvalidDimensions, InvalidFieldOfView, InvalidLens, NonInvertibleCamera };
         pub const RenderError = std.mem.Allocator.Error || Image.InitError || World.TraceError || CameraError;
 
         pub fn rayForPixel(self: Self, x: usize, y: usize) ?Ray {
@@ -446,5 +496,83 @@ test "one sample per pixel is the ray through its middle" {
     defer none.deinit(testing.allocator);
     for (plain.pixels, none.pixels) |expected, actual| {
         try testing.expectEqualDeep(expected, actual);
+    }
+}
+
+test "an aperture of no width leaves the whole scene sharp" {
+    const objects = [_]Sh{
+        .{ .material = .{ .color = Col.init(0.8, 1.0, 0.6), .diffuse = 0.7, .specular = 0.2 } },
+        .{ .id = 1, .transform = Tf.scaling(0.5, 0.5, 0.5) },
+    };
+    const world: Cam.World = .{
+        .objects = &objects,
+        .light = light.Light.init(V.point(-10, 10, -10), Col.white),
+    };
+
+    var pinhole = Cam.init(9, 9, pi / 2.0);
+    pinhole.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
+    pinhole.supersample = 2;
+    // Where nothing is spread over the aperture, how far off the focal plane
+    // a thing stands makes no difference to it.
+    var focused = pinhole;
+    focused.focus = 4;
+
+    var a = try pinhole.render(testing.allocator, world, .none);
+    defer a.deinit(testing.allocator);
+    var b = try focused.render(testing.allocator, world, .none);
+    defer b.deinit(testing.allocator);
+    for (a.pixels, b.pixels) |expected, actual| {
+        try testing.expectEqualDeep(expected, actual);
+    }
+}
+
+test "a wide aperture blurs what does not stand at the focal distance" {
+    // One ball at the focal distance and one well behind it, side by side.
+    const objects = [_]Sh{
+        .{ .transform = Tf.translation(-1.2, 0, 0), .material = .{ .color = Col.init(1, 0, 0), .ambient = 1, .diffuse = 0, .specular = 0 } },
+        .{ .id = 1, .transform = Tf.translation(1.6, 0, 6), .material = .{ .color = Col.init(0, 0, 1), .ambient = 1, .diffuse = 0, .specular = 0 } },
+    };
+    const world: Cam.World = .{
+        .objects = &objects,
+        .light = light.Light.init(V.point(-10, 10, -10), Col.white),
+    };
+
+    var c = Cam.init(41, 21, pi / 3.0);
+    c.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
+    c.supersample = 4;
+    c.aperture = 0.8;
+    c.focus = 5;
+
+    var image = try c.render(testing.allocator, world, .none);
+    defer image.deinit(testing.allocator);
+
+    // The near ball's outline is where the camera is focused, so it keeps the
+    // hard edge between red and black; the far ball's is smeared into the
+    // black around it, and leaves pixels of neither colour behind.
+    var mixed_near: usize = 0;
+    var mixed_far: usize = 0;
+    for (0..image.height) |y| {
+        for (0..image.width) |x| {
+            const p = image.pixelAt(x, y);
+            const partial = p.red() > 0.01 and p.red() < 0.99;
+            const hazy = p.blue() > 0.01 and p.blue() < 0.99;
+            if (partial) mixed_near += 1;
+            if (hazy) mixed_far += 1;
+        }
+    }
+    try testing.expect(mixed_far > mixed_near);
+}
+
+test "a camera with an impossible lens renders nothing" {
+    const world: Cam.World = .{};
+    for ([_]f64{ -1, std.math.inf(f64), std.math.nan(f64) }) |aperture| {
+        var c = Cam.init(1, 1, pi / 2.0);
+        c.aperture = aperture;
+        try testing.expectError(error.InvalidLens, c.render(testing.failing_allocator, world, .none));
+    }
+    for ([_]f64{ 0, -2, std.math.inf(f64), std.math.nan(f64) }) |focus| {
+        var c = Cam.init(1, 1, pi / 2.0);
+        c.focus = focus;
+        try testing.expectError(error.InvalidLens, c.render(testing.failing_allocator, world, .none));
     }
 }
