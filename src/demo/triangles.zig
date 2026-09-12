@@ -148,6 +148,7 @@ pub fn Scene(comptime T: type) type {
         /// The two balls, unassembled: the facets themselves, with the groups
         /// still to be pointed at them.
         pub fn objects() Objects {
+            // SAFETY: every field is filled in below before `all` is returned.
             var all: Objects = undefined;
 
             for (&all.meshes, 0..) |*mesh, smooth| {

@@ -11,7 +11,7 @@ pub fn Roots(comptime T: type, comptime capacity: usize) type {
     return struct {
         const Self = @This();
 
-        ts: [capacity]T = undefined,
+        ts: [capacity]T = @splat(0),
         len: usize = 0,
 
         /// No crossing at all: the ray misses.

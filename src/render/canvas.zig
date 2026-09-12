@@ -107,7 +107,7 @@ pub fn Canvas(comptime Col: type) type {
                             &buf,
                             "{d}",
                             .{pixel.scaleChannel(channel, max_color_value)},
-                        ) catch unreachable;
+                        ) catch @panic("a channel value never runs past three digits");
 
                         if (line_len == 0) {
                             // Nothing on this line yet.

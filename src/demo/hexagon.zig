@@ -105,6 +105,7 @@ pub fn Scene(comptime T: type) type {
         /// The ring, unassembled: the shapes themselves, with the groups still
         /// to be pointed at their children.
         pub fn objects() Objects {
+            // SAFETY: every field is filled in below before `all` is returned.
             var all: Objects = undefined;
 
             for (&all.parts, &all.side_groups, 0..) |*parts, *side, i| {

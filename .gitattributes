@@ -1,0 +1,4 @@
+# Zig's formatter rejects CRLF, so every text file in the tree is checked out
+# with LF endings regardless of platform.
+* text=auto eol=lf
+*.png binary

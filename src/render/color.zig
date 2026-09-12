@@ -57,8 +57,8 @@ pub fn Color(comptime T: type) type {
         /// lane is padding and carries no channel, so it is left out.
         pub fn eql(a: Self, b: Self) bool {
             const lanes = @Vector(3, i32){ 0, 1, 2 };
-            const ra: @Vector(3, T) = @shuffle(T, a.v, undefined, lanes);
-            const rb: @Vector(3, T) = @shuffle(T, b.v, undefined, lanes);
+            const ra: @Vector(3, T) = @shuffle(T, a.v, a.v, lanes);
+            const rb: @Vector(3, T) = @shuffle(T, b.v, b.v, lanes);
             return @reduce(.And, float.vectorEql(T, 3, ra, rb));
         }
 

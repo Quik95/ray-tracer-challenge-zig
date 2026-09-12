@@ -57,8 +57,9 @@ pub fn Obj(comptime T: type) type {
             groups: []Object = &.{},
             /// What each of those groups is called, in the same order.
             names: [][]const u8 = &.{},
-            /// A group over all of them: the model as one shape.
-            root: Object = undefined,
+            /// A group over all of them: the model as one shape. Empty until
+            /// every face has been read.
+            root: Object = Object.group(&.{}),
 
             pub fn deinit(self: *Model) void {
                 for (self.names) |name| self.allocator.free(name);
@@ -265,7 +266,9 @@ pub fn Obj(comptime T: type) type {
             normals: []const Point,
             out: *std.ArrayList(Object),
         ) ParseError!void {
+            // SAFETY: read only once `seen` says a corner has been stored.
             var fan: Corner = undefined;
+            // SAFETY: read only once `seen` says a corner has been stored.
             var previous: Corner = undefined;
             var seen: usize = 0;
 

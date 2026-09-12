@@ -28,7 +28,7 @@ pub fn Cube(comptime T: type) type {
         const Axes = @Vector(3, T);
 
         inline fn axes(t: Point) Axes {
-            return @shuffle(T, t.v, undefined, [3]i32{ 0, 1, 2 });
+            return @shuffle(T, t.v, t.v, [3]i32{ 0, 1, 2 });
         }
 
         pub const Bounds = bounds_mod.Bounds(T);

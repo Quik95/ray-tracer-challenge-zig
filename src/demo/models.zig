@@ -171,6 +171,7 @@ pub fn Scene(comptime T: type) type {
         /// Read every model. The caller owns the result and frees it with
         /// `deinit`; `world` is what stands the meshes up.
         pub fn objects(allocator: std.mem.Allocator) LoadError!Objects {
+            // SAFETY: both arrays are filled in by the loop below, and `loaded` says how much of them stands.
             var all: Objects = .{ .models = undefined, .top = undefined };
             var loaded: usize = 0;
             errdefer for (all.models[0..loaded]) |*model| model.deinit();

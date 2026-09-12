@@ -47,6 +47,7 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         /// Build a matrix from its rows, written out the way the book prints
         /// them.
         pub inline fn init(rows: [n][n]T) Self {
+            // SAFETY: every row is written by the loop below.
             var m: Self = undefined;
             for (rows, 0..) |row, i| m.rows[i] = row;
             return m;
@@ -84,6 +85,7 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         /// B's column j. Taken a row at a time, that is B's rows scaled by
         /// A's row and summed, which keeps everything in whole-row SIMD ops.
         pub fn mul(a: Self, b: Self) Self {
+            // SAFETY: every row is written by the loop below.
             var out: Self = undefined;
             for (0..n) |i| {
                 var acc: Row = @splat(0);
@@ -98,6 +100,7 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         /// Matrix times tuple, treating the tuple as a one-column matrix.
         pub fn mulTuple(self: Self, t: Tuple4) Tuple4 {
             if (n != 4) @compileError("only a 4x4 matrix can transform a tuple");
+            // SAFETY: all four lanes are written by the loop below.
             var out: Tuple4 = undefined;
             inline for (0..4) |i| {
                 out.v[i] = @reduce(.Add, self.rows[i] * t.v);

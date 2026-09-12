@@ -149,10 +149,10 @@ pub fn Tuple(comptime T: type) type {
         pub fn cross(a: Self, b: Self) Self {
             const yzx: @Vector(4, i32) = .{ 1, 2, 0, 3 };
             const zxy: @Vector(4, i32) = .{ 2, 0, 1, 3 };
-            const a_yzx = @shuffle(T, a.v, undefined, yzx);
-            const a_zxy = @shuffle(T, a.v, undefined, zxy);
-            const b_yzx = @shuffle(T, b.v, undefined, yzx);
-            const b_zxy = @shuffle(T, b.v, undefined, zxy);
+            const a_yzx = @shuffle(T, a.v, a.v, yzx);
+            const a_zxy = @shuffle(T, a.v, a.v, zxy);
+            const b_yzx = @shuffle(T, b.v, b.v, yzx);
+            const b_zxy = @shuffle(T, b.v, b.v, zxy);
             return .{ .v = a_yzx * b_zxy - a_zxy * b_yzx };
         }
 

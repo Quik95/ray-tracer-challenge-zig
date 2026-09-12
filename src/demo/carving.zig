@@ -106,6 +106,7 @@ pub fn Scene(comptime T: type) type {
         /// The three shapes, unassembled: the primitives themselves, with the
         /// operations still to be pointed at them.
         pub fn objects() Objects {
+            // SAFETY: every field is filled in below before `all` is returned.
             var all: Objects = undefined;
 
             for (&all.operands, all.top[0..operations.len], operations, 0..) |*pair, *combined, operation, i| {

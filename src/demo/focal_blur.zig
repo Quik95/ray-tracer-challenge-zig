@@ -43,7 +43,7 @@ pub fn Scene(comptime T: type) type {
         /// The row runs away from the eye and off to the right, so the balls
         /// stand clear of one another instead of hiding behind the first.
         fn ballAt(i: usize) Object {
-            const step = @as(T, @floatFromInt(i));
+            const step: T = @floatFromInt(i);
             const radius = 0.75;
             return .{
                 .transform = Tf.chain()

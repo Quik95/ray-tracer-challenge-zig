@@ -17,6 +17,11 @@ need to read the source material; do not commit the book or long excerpts of it.
 - `devenv test` is the full gate: `zig fmt --check`, `actionlint`, `zizmor`,
   `zig build`, `zig build test`. Run it before claiming work is done.
 - `zig build run` runs the demo program; `zig build test` runs the suite.
+- CI also runs `zlint --deny-warnings`, which `devenv test` does not cover.
+  `zlint.json` turns off `suppressed-errors`: the places that swallow an error
+  are reporting a failure to stderr or abandoning work already on its way out,
+  and there is nothing left to propagate to. Every other rule stays on, so a
+  bare `undefined` wants a `// SAFETY:` comment above it.
 - The `zig-0.16` skill in `.agents/skills/` covers 0.16 API specifics (the
   `std.Io` rework, `@Type` removal, `@cImport` deprecation). Consult it rather
   than guessing at APIs — 0.16 broke a lot of pre-0.15 material.

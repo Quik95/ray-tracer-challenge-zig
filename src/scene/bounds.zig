@@ -153,7 +153,7 @@ pub fn Bounds(comptime T: type) type {
         /// The three components that carry position; `w` says point or vector
         /// and has no part in the geometry.
         inline fn axes(t: Point) @Vector(3, T) {
-            return @shuffle(T, t.v, undefined, [3]i32{ 0, 1, 2 });
+            return @shuffle(T, t.v, t.v, [3]i32{ 0, 1, 2 });
         }
     };
 }
