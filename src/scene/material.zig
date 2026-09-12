@@ -68,12 +68,17 @@ pub fn Material(comptime T: type) type {
 
         /// The color of this material at `point`, lit by `light` and seen
         /// along `eye`, where the surface faces `normal`. All three vectors
-        /// are expected to be normalized. A point `in_shadow` sees none of
-        /// the light directly, so only the ambient term reaches it.
+        /// are expected to be normalized. `intensity` is how much of the
+        /// light reaches the point: zero where none of it does, one in the
+        /// open, and a fraction at the soft edge of a shadow. What the light
+        /// cannot reach keeps only its ambient term.
         ///
         /// `point` is in world space, which is where the light stands;
         /// `object_point` is the same place in the object's own coordinates,
         /// which is where a pattern is read.
+        ///
+        /// A light with a surface is answered once per sample and the answers
+        /// averaged, so that a highlight spreads with the light that casts it.
         pub fn lighting(
             self: Self,
             light: Light,
@@ -81,7 +86,7 @@ pub fn Material(comptime T: type) type {
             object_point: Point,
             eye: Point,
             normal: Point,
-            in_shadow: bool,
+            intensity: T,
         ) C {
             // A surface can only reflect what the light actually emits.
             const effective = self.colorAt(object_point).hadamard(light.intensity);
@@ -89,14 +94,32 @@ pub fn Material(comptime T: type) type {
 
             // Both remaining terms are answers to the light itself; where it
             // is blocked, neither has anything to answer.
-            if (in_shadow) return ambient;
+            if (intensity <= 0) return ambient;
 
-            const light_dir = light.position.sub(point).normalize();
+            const samples = light.samples();
+            var sum = C.black;
+            for (0..samples) |i| {
+                sum = sum.add(self.sampleTerms(light, light.sample(i), effective, point, eye, normal));
+            }
+            return ambient.add(sum.mul(intensity / @as(T, @floatFromInt(samples))));
+        }
+
+        /// What one place on the light adds: its diffuse and specular terms.
+        fn sampleTerms(
+            self: Self,
+            light: Light,
+            light_point: Point,
+            effective: C,
+            point: Point,
+            eye: Point,
+            normal: Point,
+        ) C {
+            const light_dir = light_point.sub(point).normalize();
 
             // The cosine of the angle to the light; negative means the light
-            // is behind the surface, which leaves only the ambient term.
+            // is behind the surface, which leaves nothing to add.
             const light_dot_normal = light_dir.dot(normal);
-            if (light_dot_normal < 0) return ambient;
+            if (light_dot_normal < 0) return C.black;
 
             const diffuse = effective.mul(self.diffuse * light_dot_normal);
 
@@ -104,12 +127,10 @@ pub fn Material(comptime T: type) type {
             // eye, not away from it, for any of it to be seen.
             const reflected = light_dir.neg().reflect(normal);
             const reflect_dot_eye = reflected.dot(eye);
-            if (reflect_dot_eye <= 0) return ambient.add(diffuse);
+            if (reflect_dot_eye <= 0) return diffuse;
 
             const factor = std.math.pow(T, reflect_dot_eye, self.shininess);
-            const specular = light.intensity.mul(self.specular * factor);
-
-            return ambient.add(diffuse).add(specular);
+            return diffuse.add(light.intensity.mul(self.specular * factor));
         }
     };
 }
@@ -144,7 +165,7 @@ test "lighting with the eye between the light and the surface" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
-    try testing.expect(m.lighting(light, position, position, eye, normal, false).eql(Col.init(1.9, 1.9, 1.9)));
+    try testing.expect(m.lighting(light, position, position, eye, normal, 1.0).eql(Col.init(1.9, 1.9, 1.9)));
 }
 
 test "lighting with the eye offset 45 degrees loses the highlight" {
@@ -153,7 +174,7 @@ test "lighting with the eye offset 45 degrees loses the highlight" {
     const eye = V.vector(0, half_root_two, -half_root_two);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
-    try testing.expect(m.lighting(light, position, position, eye, normal, false).eql(Col.init(1.0, 1.0, 1.0)));
+    try testing.expect(m.lighting(light, position, position, eye, normal, 1.0).eql(Col.init(1.0, 1.0, 1.0)));
 }
 
 test "lighting with the light offset 45 degrees dims the diffuse term" {
@@ -162,7 +183,7 @@ test "lighting with the light offset 45 degrees dims the diffuse term" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 10, -10), Col.white);
-    const result = m.lighting(light, position, position, eye, normal, false);
+    const result = m.lighting(light, position, position, eye, normal, 1.0);
     try testing.expect(result.eql(Col.init(0.7364, 0.7364, 0.7364)));
 }
 
@@ -172,7 +193,7 @@ test "lighting with the eye in the path of the reflection" {
     const eye = V.vector(0, -half_root_two, -half_root_two);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 10, -10), Col.white);
-    const result = m.lighting(light, position, position, eye, normal, false);
+    const result = m.lighting(light, position, position, eye, normal, 1.0);
     try testing.expect(result.eql(Col.init(1.6364, 1.6364, 1.6364)));
 }
 
@@ -182,23 +203,23 @@ test "lighting with the light behind the surface leaves only ambient" {
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, 10), Col.white);
-    try testing.expect(m.lighting(light, position, position, eye, normal, false).eql(Col.init(0.1, 0.1, 0.1)));
+    try testing.expect(m.lighting(light, position, position, eye, normal, 1.0).eql(Col.init(0.1, 0.1, 0.1)));
 }
 
 test "the light's color tints what the surface reflects" {
     const m: Mat = .{ .color = Col.init(1, 1, 1) };
     const light = L.init(V.point(0, 0, -10), Col.init(1, 0, 0));
-    const result = m.lighting(light, V.point(0, 0, 0), V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), false);
+    const result = m.lighting(light, V.point(0, 0, 0), V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), 1.0);
     try testing.expect(result.eql(Col.init(1.9, 0, 0)));
 }
 
-test "lighting a surface in shadow leaves only ambient" {
+test "lighting a surface the light cannot reach leaves only ambient" {
     const m: Mat = .{};
     const position = V.point(0, 0, 0);
     const eye = V.vector(0, 0, -1);
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
-    try testing.expect(m.lighting(light, position, position, eye, normal, true).eql(Col.init(0.1, 0.1, 0.1)));
+    try testing.expect(m.lighting(light, position, position, eye, normal, 0.0).eql(Col.init(0.1, 0.1, 0.1)));
 }
 
 test "materials shade at comptime" {
@@ -206,7 +227,7 @@ test "materials shade at comptime" {
         @setEvalBranchQuota(20_000);
         const m: Mat = .{};
         const light = L.init(V.point(0, 0, -10), Col.white);
-        const result = m.lighting(light, V.point(0, 0, 0), V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), false);
+        const result = m.lighting(light, V.point(0, 0, 0), V.point(0, 0, 0), V.vector(0, 0, -1), V.vector(0, 0, -1), 1.0);
         try testing.expect(result.eql(Col.init(1.9, 1.9, 1.9)));
     }
 }
@@ -222,8 +243,8 @@ test "a patterned material takes its color from the pattern" {
     const normal = V.vector(0, 0, -1);
     const light = L.init(V.point(0, 0, -10), Col.white);
 
-    const c1 = m.lighting(light, V.point(0.9, 0, 0), V.point(0.9, 0, 0), eye, normal, false);
-    const c2 = m.lighting(light, V.point(1.1, 0, 0), V.point(1.1, 0, 0), eye, normal, false);
+    const c1 = m.lighting(light, V.point(0.9, 0, 0), V.point(0.9, 0, 0), eye, normal, 1.0);
+    const c2 = m.lighting(light, V.point(1.1, 0, 0), V.point(1.1, 0, 0), eye, normal, 1.0);
     try testing.expect(c1.eql(Col.white));
     try testing.expect(c2.eql(Col.black));
 }
@@ -234,4 +255,39 @@ test "materials differ when only their patterns do" {
     try testing.expect(!a.eql(b));
     try testing.expect(!a.eql(.{}));
     try testing.expect(a.eql(a));
+}
+
+test "a partly reached surface is lit between shadow and full light" {
+    const m: Mat = .{ .ambient = 0.1, .diffuse = 0.9, .specular = 0 };
+    const position = V.point(0, 0, -1);
+    const eye = V.vector(0, 0, -1);
+    const normal = V.vector(0, 0, -1);
+    const light = L.init(V.point(0, 0, -10), Col.white);
+
+    const full = m.lighting(light, position, position, eye, normal, 1.0);
+    const half = m.lighting(light, position, position, eye, normal, 0.5);
+    const none = m.lighting(light, position, position, eye, normal, 0.0);
+    try testing.expect(none.eql(Col.init(0.1, 0.1, 0.1)));
+    try testing.expect(half.eql(none.add(full.sub(none).mul(0.5))));
+}
+
+test "a light with a surface is answered from each of its samples" {
+    const m: Mat = .{ .ambient = 0.1, .diffuse = 0.9, .specular = 0 };
+    const light = L.area(V.point(-0.5, -0.5, -5), V.vector(1, 0, 0), 2, V.vector(0, 1, 0), 2, Col.white);
+    const eye = V.vector(0, 0, -1);
+    const normal = V.vector(0, 0, -1);
+
+    // The samples stand off to the sides, so each answers at a slant and the
+    // surface comes out a shade darker than one light straight ahead leaves it.
+    const spread = m.lighting(light, V.point(0, 0, 0), V.point(0, 0, 0), eye, normal, 1.0);
+    const straight = m.lighting(
+        L.init(light.position, Col.white),
+        V.point(0, 0, 0),
+        V.point(0, 0, 0),
+        eye,
+        normal,
+        1.0,
+    );
+    try testing.expect(spread.red() < straight.red());
+    try testing.expect(spread.red() > 0.9 * straight.red());
 }

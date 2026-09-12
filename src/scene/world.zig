@@ -73,8 +73,12 @@ pub fn World(comptime T: type) type {
         /// with no light shadows nothing: there is no light to block.
         pub fn isShadowed(self: Self, point: Object.Point) bool {
             const light = self.light orelse return false;
+            return self.isOccluded(light.position, point);
+        }
 
-            const to_light = light.position.sub(point);
+        /// Whether something stands between `point` and `light_point`.
+        pub fn isOccluded(self: Self, light_point: Object.Point, point: Object.Point) bool {
+            const to_light = light_point.sub(point);
             const distance = to_light.magnitude();
             const r = Ray.init(point, to_light.normalize());
 
@@ -82,6 +86,56 @@ pub fn World(comptime T: type) type {
             // anything beyond it is behind the point's light source.
             const blocker = self.hit(r) orelse return false;
             return blocker.t < distance;
+        }
+
+        /// How much of the light reaches `point`: none of it at zero, all of
+        /// it at one. A light with no size can only answer one or the other,
+        /// which is what makes its shadows sharp; one with a surface answers
+        /// with the share of its samples that are not hidden, and its shadows
+        /// fade over the band where that share falls away.
+        pub fn intensityAt(self: Self, point: Object.Point) T {
+            const light = self.light orelse return 0;
+            const samples = light.samples();
+            if (samples == 1) return if (self.isOccluded(light.position, point)) 0 else 1;
+
+            // Each sample is taken somewhere inside its own cell rather than
+            // at the middle of it, so that neighbouring points do not all
+            // count the same places on the light and leave rings where the
+            // count steps up. Where that somewhere is comes from the point
+            // itself, which keeps the same scene rendering to the same image.
+            var noise = scramble(point);
+            var lit: usize = 0;
+            for (0..samples) |i| {
+                noise = mix(noise);
+                const u_off = unitFrom(noise);
+                noise = mix(noise);
+                const v_off = unitFrom(noise);
+                if (!self.isOccluded(light.sampleWithin(i, u_off, v_off), point)) lit += 1;
+            }
+            return @as(T, @floatFromInt(lit)) / @as(T, @floatFromInt(samples));
+        }
+
+        /// The three coordinates of a point, stirred into one number.
+        fn scramble(point: Object.Point) u64 {
+            var h: u64 = 0x9e3779b97f4a7c15;
+            inline for (.{ point.x(), point.y(), point.z() }) |v| {
+                h = mix(h ^ @as(u64, @as(u32, @bitCast(@as(f32, @floatCast(v))))));
+            }
+            return h;
+        }
+
+        /// One round of splitmix64: cheap, and enough to keep neighbouring
+        /// points from agreeing on where to sample.
+        fn mix(x: u64) u64 {
+            var z = x +% 0x9e3779b97f4a7c15;
+            z = (z ^ (z >> 30)) *% 0xbf58476d1ce4e5b9;
+            z = (z ^ (z >> 27)) *% 0x94d049bb133111eb;
+            return z ^ (z >> 31);
+        }
+
+        /// The top bits of a stirred number, read as a fraction of a cell.
+        fn unitFrom(x: u64) T {
+            return @as(T, @floatFromInt(x >> 40)) / @as(T, 1 << 24);
         }
 
         /// Shade a prepared crossing with this world's light.
@@ -110,7 +164,7 @@ pub fn World(comptime T: type) type {
                 object_point,
                 comps.eye,
                 comps.normal,
-                self.isShadowed(comps.over_point),
+                self.intensityAt(comps.over_point),
             );
 
             const reflected = try self.reflectedColor(comps, bounces);
@@ -360,6 +414,62 @@ test "a world without a light shadows nothing" {
     const objects = defaultObjects();
     const w: W = .{ .objects = &objects };
     try testing.expect(!w.isShadowed(V.point(10, -10, 10)));
+}
+
+test "a point light reaches a point either wholly or not at all" {
+    const objects = defaultObjects();
+    const w: W = .{ .objects = &objects, .light = L.init(V.point(-10, 10, -10), Col.white) };
+    try testing.expectEqual(@as(f64, 1), w.intensityAt(V.point(0, 1.0001, 0)));
+    try testing.expectEqual(@as(f64, 0), w.intensityAt(V.point(0, -1.0001, 0)));
+}
+
+test "a world without a light is reached by no light at all" {
+    const objects = defaultObjects();
+    const w: W = .{ .objects = &objects };
+    try testing.expectEqual(@as(f64, 0), w.intensityAt(V.point(0, 1.0001, 0)));
+}
+
+test "an area light is partly hidden at the edge of the shadow it casts" {
+    const objects = [1]Sh{.{ .transform = Tf.scaling(0.5, 0.5, 0.5) }};
+    const w: W = .{
+        .objects = &objects,
+        .light = L.area(
+            V.point(-1, 1.5, -1),
+            V.vector(2, 0, 0),
+            4,
+            V.vector(0, 0, 2),
+            4,
+            Col.white,
+        ),
+    };
+
+    // Straight under the ball nothing of the light gets through, out to the
+    // side all of it does, and between the two lies the soft edge.
+    try testing.expectEqual(@as(f64, 0), w.intensityAt(V.point(0, -1, 0)));
+    try testing.expectEqual(@as(f64, 1), w.intensityAt(V.point(3, -1, 0)));
+    const edge = w.intensityAt(V.point(0.7, -1, 0));
+    try testing.expect(edge > 0 and edge < 1);
+}
+
+test "a light with a surface spreads the shadow it casts" {
+    const objects = [1]Sh{.{ .transform = Tf.scaling(0.5, 0.5, 0.5) }};
+    const spread: W = .{
+        .objects = &objects,
+        .light = L.area(V.point(-1, 1.5, -1), V.vector(2, 0, 0), 4, V.vector(0, 0, 2), 4, Col.white),
+    };
+    const sharp: W = .{ .objects = &objects, .light = L.init(V.point(0, 1.5, 0), Col.white) };
+
+    // Where a light of no size draws a hard line between lit and unlit, one
+    // with a surface passes through every value in between.
+    var softened = false;
+    var x: f64 = 0;
+    while (x < 2) : (x += 0.05) {
+        const point = V.point(x, -1, 0);
+        const i = spread.intensityAt(point);
+        if (i > 0 and i < 1) softened = true;
+        try testing.expect(sharp.intensityAt(point) == 0 or sharp.intensityAt(point) == 1);
+    }
+    try testing.expect(softened);
 }
 
 test "shading a crossing that lies in shadow leaves only ambient" {

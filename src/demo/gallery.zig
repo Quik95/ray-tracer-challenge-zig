@@ -27,6 +27,7 @@ const projectile = @import("projectile.zig");
 const room = @import("room.zig");
 const sphere_cast = @import("sphere_cast.zig");
 const spheres = @import("spheres.zig");
+const soft_shadows = @import("soft_shadows.zig");
 
 /// The gallery, over a float type.
 pub fn Gallery(comptime T: type) type {
@@ -69,6 +70,7 @@ pub fn Gallery(comptime T: type) type {
             hexagon.Scene(T),
             triangles.Scene(T),
             carving.Scene(T),
+            soft_shadows.Scene(T),
         };
 
         pub const count = scenes.len;
@@ -147,7 +149,7 @@ const testing = std.testing;
 
 test "the gallery runs from the first drawing to the newest scene" {
     try testing.expectEqualStrings("projectile", Default.entries[0].name);
-    try testing.expectEqualStrings("csg", Default.latest.name);
+    try testing.expectEqualStrings("soft-shadows", Default.latest.name);
 
     // Names are what the command line matches on, so they must be distinct.
     for (Default.entries, 0..) |entry, i| {
@@ -164,7 +166,8 @@ test "scenes of a group share a directory, numbered in gallery order" {
     try testing.expectEqualStrings("4-shapes", Default.find("cylinders").?.dir);
     try testing.expectEqualStrings("5-groups", Default.find("hexagon").?.dir);
     try testing.expectEqualStrings("6-triangles", Default.find("triangles").?.dir);
-    try testing.expectEqualStrings("7-csg", Default.latest.dir);
+    try testing.expectEqualStrings("7-csg", Default.find("csg").?.dir);
+    try testing.expectEqualStrings("8-light", Default.latest.dir);
 
     // A group is one run of neighbouring scenes: once its directory has been
     // left behind, it is never returned to.

@@ -126,14 +126,14 @@ pub fn Shaded(comptime T: type) type {
                     const point = r.position(hit.t);
                     const normal = hit.object.normalAt(point) orelse continue;
                     const object_point = hit.object.worldToObject(point) orelse continue;
-                    // Nothing else is in the scene, so nothing can shadow it.
+                    // Nothing else is in the scene, so the light reaches it whole.
                     const shade = hit.object.material.lighting(
                         lamp,
                         point,
                         object_point,
                         r.direction.neg(),
                         normal,
-                        false,
+                        1.0,
                     );
                     image.writePixel(x, y, shade);
                 }
