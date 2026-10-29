@@ -32,7 +32,9 @@ pub fn Matrix(comptime T: type, comptime n: usize) type {
         /// The tuple type this matrix can transform, when it is 4x4.
         pub const Tuple4 = tuple.Tuple(T);
 
-        rows: [n]Row,
+        /// Each row aligned to its full size for the same reason as a
+        /// tuple's lanes.
+        rows: [n]Row align(@sizeOf(Row)),
 
         pub const zero: Self = .{ .rows = @splat(@splat(0)) };
 

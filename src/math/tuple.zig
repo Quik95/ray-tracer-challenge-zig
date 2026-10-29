@@ -35,7 +35,13 @@ pub fn Tuple(comptime T: type) type {
         /// The zero tuple, (0, 0, 0, 0).
         pub const zero: Self = .{ .v = @splat(0) };
 
-        v: Repr,
+        /// Aligned to its full size, which is where LLVM places a vector it
+        /// has no layout rule for. On targets whose registers are narrower
+        /// than the vector (aarch64 holds 128 bits, a `@Vector(4, f64)` is
+        /// 256) Zig 0.17 assumes a smaller alignment than the LLVM backend
+        /// lays out, so any struct or error union holding one disagrees
+        /// about where its later fields sit and reads garbage.
+        v: Repr align(@sizeOf(Repr)),
 
         /// tuple(x, y, z, w)
         pub inline fn init(x_: T, y_: T, z_: T, w_: T) Self {

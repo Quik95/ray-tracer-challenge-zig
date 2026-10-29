@@ -30,7 +30,8 @@ pub fn Color(comptime T: type) type {
         pub const black: Self = init(0, 0, 0);
         pub const white: Self = init(1, 1, 1);
 
-        v: Repr,
+        /// Aligned to its full size for the same reason as a tuple's lanes.
+        v: Repr align(@sizeOf(Repr)),
 
         /// color(red, green, blue)
         pub inline fn init(r: T, g: T, b: T) Self {
