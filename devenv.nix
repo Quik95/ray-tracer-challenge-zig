@@ -17,6 +17,8 @@
     zls          # Zig language server
     actionlint   # static analysis for GitHub Actions workflows
     zizmor       # security/vulnerability audit for GitHub Actions workflows
+    pkg-config   # how `zig build` finds libavif
+    libavif      # AVIF output (AV1 through libaom)
   ];
 
   enterShell = ''

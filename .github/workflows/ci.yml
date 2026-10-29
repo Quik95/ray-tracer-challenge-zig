@@ -22,6 +22,20 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # AVIF output links the system libavif; only the Linux runner
+        # installs it, the others build without.
+        include:
+          - os: ubuntu-latest
+            avif: true
+          - os: macos-latest
+            avif: false
+          - os: windows-latest
+            avif: false
+    defaults:
+      run:
+        shell: bash
+    env:
+      AVIF: ${{ matrix.avif }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,14 +45,18 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install libavif
+        if: matrix.avif
+        run: sudo apt-get update && sudo apt-get install -y libavif-dev pkg-config
+
       - name: Check formatting
         run: zig fmt --check .
 
       - name: Build
-        run: zig build --summary all
+        run: zig build -Davif="$AVIF" --summary all
 
       - name: Test
-        run: zig build test --summary all
+        run: zig build test -Davif="$AVIF" --summary all
 
   lint:
     name: Static analysis (zlint)

@@ -10,9 +10,10 @@
 //! that goes straight down the pipe, so a single image can still be fed to an
 //! image viewer without touching the disk.
 //!
-//! Images are written as PNG. A render is mostly smooth gradients and flat
-//! background, which compresses to a small fraction of the pixels it covers,
-//! and a gallery of them is otherwise hundreds of megabytes.
+//! Images are written as PNG unless `-f avif` asks for AVIF. A render is
+//! mostly smooth gradients and flat background, which compresses to a small
+//! fraction of the pixels it covers, and a gallery of them is otherwise
+//! hundreds of megabytes. AVIF is lossy and smaller again by several times.
 //!
 //! A scene need not be one of these at all: an argument naming a `.yml` file
 //! is read as a scene description and drawn the same way, at the size it asks
@@ -77,9 +78,35 @@ const Job = struct {
     size: ?Size,
     /// Null means the default directory, or stdout when that is a pipe.
     out_dir: ?[]const u8,
+    format: Format,
 };
 
-const usage = "usage: gallery [SCENE | FILE.yml | all] [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT] [-o DIR]\n" ++
+/// How the images are stored, named as on the command line and as the
+/// extension each file is given.
+const Format = enum {
+    png,
+    avif,
+
+    fn parse(name: []const u8) ParseError!Format {
+        const format = std.meta.stringToEnum(Format, name) orelse return error.UnknownFormat;
+        if (format == .avif and !rt.avif.available) return error.AvifUnavailable;
+        return format;
+    }
+
+    fn write(format: Format, gpa: std.mem.Allocator, io: Io, file: Io.File, image: rt.Image) !void {
+        switch (format) {
+            .png => try rt.png.writeFile(image, gpa, io, file),
+            // `parse` never yields AVIF from a build without libavif, and
+            // such a build has no encoder to call.
+            .avif => if (comptime rt.avif.available)
+                try rt.avif.writeFile(image, gpa, io, file, .{})
+            else
+                unreachable,
+        }
+    }
+};
+
+const usage = "usage: gallery [SCENE | FILE.yml | all] [SIZE | WIDTH HEIGHT | WIDTHxHEIGHT] [-o DIR] [-f png|avif]\n" ++
     "\n" ++
     "Renders a scene at the given size in pixels (default 400x200).\n" ++
     "`all` renders every scene, each into its own file under DIR,\n" ++
@@ -88,6 +115,8 @@ const usage = "usage: gallery [SCENE | FILE.yml | all] [SIZE | WIDTH HEIGHT | WI
     "\n" ++
     "A `.yml` path is read as a scene description and drawn at the size\n" ++
     "written in it, unless a size is given here as well.\n" ++
+    "\n" ++
+    "-f picks the image format: PNG (the default) or AVIF.\n" ++
     "\n" ++
     "Scenes:\n";
 
@@ -169,16 +198,16 @@ pub fn main(init: std.process.Init) !void {
             else
                 try gpa.dupe(u8, out);
             defer gpa.free(group);
-            const name = try std.fmt.allocPrint(gpa, "{s}.png", .{scene.name()});
+            const name = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ scene.name(), @tagName(job.format) });
             defer gpa.free(name);
             const path = try std.fs.path.join(gpa, &.{ group, name });
             defer gpa.free(path);
 
             try Io.Dir.cwd().createDirPath(io, group);
-            try writeFile(gpa, io, path, image);
+            try writeFile(gpa, io, path, image, job.format);
             try log.print("wrote {s} ({d}x{d})\n", .{ path, image.width, image.height });
         } else {
-            try rt.png.writeFile(image, gpa, io, stdout);
+            try job.format.write(gpa, io, stdout, image);
             try log.print("wrote the {d}x{d} {s} image to stdout\n", .{
                 image.width,
                 image.height,
@@ -231,6 +260,9 @@ const ParseError = error{
     TooManyArguments,
     UnknownScene,
     MissingDirectory,
+    MissingFormat,
+    UnknownFormat,
+    AvifUnavailable,
 };
 
 fn message(err: ParseError) []const u8 {
@@ -240,6 +272,8 @@ fn message(err: ParseError) []const u8 {
         error.TooManyArguments => "expected at most two size arguments",
         error.UnknownScene => "no such scene",
         error.MissingDirectory => "-o wants a directory to write into",
+        error.MissingFormat, error.UnknownFormat => "-f wants an image format: png or avif",
+        error.AvifUnavailable => "this build has no AVIF support; rebuild without -Davif=false",
     };
 }
 
@@ -249,6 +283,7 @@ fn message(err: ParseError) []const u8 {
 fn parseJob(argv: []const []const u8, buffer: []Source) ParseError!Job {
     var scene_count: usize = 0;
     var out_dir: ?[]const u8 = null;
+    var format: Format = .png;
     var sizes: [2][]const u8 = undefined;
     var size_count: usize = 0;
 
@@ -270,6 +305,10 @@ fn parseJob(argv: []const []const u8, buffer: []Source) ParseError!Job {
             i += 1;
             if (i == argv.len) return error.MissingDirectory;
             out_dir = argv[i];
+        } else if (std.mem.eql(u8, arg, "-f") or std.mem.eql(u8, arg, "--format")) {
+            i += 1;
+            if (i == argv.len) return error.MissingFormat;
+            format = try Format.parse(argv[i]);
         } else if (std.mem.eql(u8, arg, "all")) {
             for (Gallery.entries) |entry| pick(buffer, &scene_count, .{ .builtin = entry });
         } else if (Gallery.find(arg)) |entry| {
@@ -291,6 +330,7 @@ fn parseJob(argv: []const []const u8, buffer: []Source) ParseError!Job {
         .sources = buffer[0..scene_count],
         .size = if (size_count == 0) null else try parseSize(sizes[0..size_count]),
         .out_dir = out_dir,
+        .format = format,
     };
 }
 
@@ -350,11 +390,11 @@ fn defaultRoot(
 /// Write the image out, replacing any previous run's file. Written through a
 /// temporary and renamed into place so an interrupted run cannot leave a
 /// half-written image behind.
-fn writeFile(gpa: std.mem.Allocator, io: Io, path: []const u8, image: rt.Image) !void {
+fn writeFile(gpa: std.mem.Allocator, io: Io, path: []const u8, image: rt.Image, format: Format) !void {
     var atomic = try Io.Dir.cwd().createFileAtomic(io, path, .{ .replace = true });
     defer atomic.deinit(io);
 
-    try rt.png.writeFile(image, gpa, io, atomic.file);
+    try format.write(gpa, io, atomic.file, image);
 
     try atomic.replace(io);
 }
@@ -418,6 +458,19 @@ test "-o names the directory the images land in" {
     try testing.expectEqualStrings("images", parsed.out_dir.?);
     try testing.expectEqual(Size{ .width = 320, .height = 240 }, parsed.size.?);
     try testing.expectError(error.MissingDirectory, parseJob(&.{"-o"}, &buffer));
+}
+
+test "-f picks the image format, PNG unless asked otherwise" {
+    var buffer: Buffer = undefined;
+    try testing.expectEqual(Format.png, (try parseJob(&.{"cubes"}, &buffer)).format);
+    try testing.expectEqual(Format.png, (try parseJob(&.{ "--format", "png" }, &buffer)).format);
+    if (rt.avif.available) {
+        try testing.expectEqual(Format.avif, (try parseJob(&.{ "cubes", "-f", "avif" }, &buffer)).format);
+    } else {
+        try testing.expectError(error.AvifUnavailable, parseJob(&.{ "-f", "avif" }, &buffer));
+    }
+    try testing.expectError(error.UnknownFormat, parseJob(&.{ "-f", "jpeg" }, &buffer));
+    try testing.expectError(error.MissingFormat, parseJob(&.{"-f"}, &buffer));
 }
 
 test "an unknown scene is a mistake, and so is a bad size" {

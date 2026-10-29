@@ -8,6 +8,12 @@ pub fn build(b: *std.Build) void {
 
     const zigimg = b.dependency("zigimg", .{ .target = target, .optimize = optimize });
 
+    // AVIF output links the system libavif, found through pkg-config. A host
+    // without it can still build everything else with `-Davif=false`.
+    const avif = b.option(bool, "avif", "Write AVIF images through the system libavif (default: true)") orelse true;
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "avif", avif);
+
     const mod = b.addModule("ray_tracing_challange_zig", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -15,6 +21,17 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zigimg", .module = zigimg.module("zigimg") },
         },
     });
+    mod.addOptions("build_options", build_options);
+    if (avif) {
+        const header = b.addWriteFiles().add("avif.h", "#include <avif/avif.h>\n");
+        const translate_c = b.addTranslateC(.{
+            .root_source_file = header,
+            .target = target,
+            .optimize = optimize,
+        });
+        translate_c.linkSystemLibrary("libavif", .{});
+        mod.addImport("avif_c", translate_c.createModule());
+    }
 
     // The demo draws a few meshes too large to write out by hand, so the
     // library carries them as files it embeds rather than as source.

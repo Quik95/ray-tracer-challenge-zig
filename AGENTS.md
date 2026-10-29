@@ -17,6 +17,8 @@ need to read the source material; do not commit the book or long excerpts of it.
 - `devenv test` is the full gate: `zig fmt --check`, `actionlint`, `zizmor`,
   `zig build`, `zig build test`. Run it before claiming work is done.
 - `zig build run` runs the demo program; `zig build test` runs the suite.
+- AVIF output links the system libavif through pkg-config; the devenv shell
+  provides both. `-Davif=false` builds without it, and the AVIF tests skip.
 - CI also runs `zlint --deny-warnings`, which `devenv test` does not cover.
   `zlint.json` turns off `suppressed-errors`: the places that swallow an error
   are reporting a failure to stderr or abandoning work already on its way out,
