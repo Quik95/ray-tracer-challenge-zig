@@ -417,7 +417,7 @@ test "parallel rendering propagates trace and allocation errors" {
     defer threaded.deinit();
     var camera = Cam.init(3, 5, pi / 2.0);
     camera.transform = Tf.view(V.point(0, 0, -5), V.point(0, 0, 0), V.vector(0, 1, 0));
-    const objects = [_]Sh{.{}} ** (Cam.World.max_intersections / 2 + 1);
+    const objects: [Cam.World.max_intersections / 2 + 1]Sh = @splat(.{});
     try testing.expectError(error.IntersectionOverflow, camera.renderParallel(
         testing.allocator,
         threaded.io(),

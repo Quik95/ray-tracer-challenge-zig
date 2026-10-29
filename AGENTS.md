@@ -11,7 +11,7 @@ need to read the source material; do not commit the book or long excerpts of it.
 
 ## Working on this repo
 
-- Zig **0.16.0**, pinned via devenv. Everything runs inside the devenv shell —
+- Zig **0.17.0**, pinned via devenv. Everything runs inside the devenv shell —
   direnv activates it automatically, otherwise prefix commands with
   `devenv shell -- `.
 - `devenv test` is the full gate: `zig fmt --check`, `actionlint`, `zizmor`,
@@ -24,9 +24,10 @@ need to read the source material; do not commit the book or long excerpts of it.
   are reporting a failure to stderr or abandoning work already on its way out,
   and there is nothing left to propagate to. Every other rule stays on, so a
   bare `undefined` wants a `// SAFETY:` comment above it.
-- The `zig-0.16` skill in `.agents/skills/` covers 0.16 API specifics (the
-  `std.Io` rework, `@Type` removal, `@cImport` deprecation). Consult it rather
-  than guessing at APIs — 0.16 broke a lot of pre-0.15 material.
+- The `zig-0-17` skill in `.agents/skills/` covers 0.17 API specifics (the
+  build system's configurer/maker split, struct-of-arrays `@typeInfo`,
+  `@backingInt`, translate-c as a package). Consult it rather than guessing at
+  APIs — 0.16 and 0.17 broke a lot of older material.
 
 ## Code guidance
 

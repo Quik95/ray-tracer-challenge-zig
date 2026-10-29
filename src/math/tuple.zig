@@ -55,7 +55,7 @@ pub fn Tuple(comptime T: type) type {
         /// Read a single component. The axis is comptime-known, so this is a
         /// free vector element access.
         pub inline fn get(self: Self, comptime axis: Axis) T {
-            return self.v[@intFromEnum(axis)];
+            return self.v[@backingInt(axis)];
         }
 
         pub inline fn x(self: Self) T {

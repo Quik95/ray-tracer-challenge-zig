@@ -38,7 +38,7 @@ pub fn Color(comptime T: type) type {
         }
 
         pub inline fn get(self: Self, comptime channel: Channel) T {
-            return self.v[@intFromEnum(channel)];
+            return self.v[@backingInt(channel)];
         }
 
         pub inline fn red(self: Self) T {

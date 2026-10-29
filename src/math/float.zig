@@ -38,7 +38,7 @@ pub const max_ulps = 4;
 /// count of representable values — but only within one sign, which is why
 /// operands of opposite sign are never compared this way.
 pub fn Bits(comptime T: type) type {
-    return std.meta.Int(.signed, @bitSizeOf(T));
+    return @Int(.signed, @bitSizeOf(T));
 }
 
 /// Compare two floats for equivalence, tolerating round-off error.
@@ -88,7 +88,7 @@ pub fn vectorEql(
     const ib: IV = @bitCast(b);
     const zero: IV = @splat(0);
     const same_sign = (ia < zero) == (ib < zero);
-    const UV = @Vector(n, std.meta.Int(.unsigned, @bitSizeOf(T)));
+    const UV = @Vector(n, @Int(.unsigned, @bitSizeOf(T)));
     const within_ulps = @abs(ia -% ib) <= @as(UV, @splat(max_ulps));
 
     // A non-finite operand has a bit pattern like any other, so the ULP test
@@ -103,7 +103,7 @@ fn isFiniteVector(comptime T: type, comptime n: usize, v: @Vector(n, T)) @Vector
     // largest bit pattern a float of that width can hold once the sign is
     // dropped. Testing for it in the integer domain keeps this usable at
     // comptime, where materializing an infinity costs branch quota.
-    const U = std.meta.Int(.unsigned, @bitSizeOf(T));
+    const U = @Int(.unsigned, @bitSizeOf(T));
     const magnitude: @Vector(n, U) = @bitCast(@abs(v));
     const largest_finite: @Vector(n, U) = @splat(@bitCast(std.math.floatMax(T)));
     return magnitude <= largest_finite;

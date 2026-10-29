@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify Zig 0.16.x is available
+# Verify Zig 0.17.x is available
 set -e
 
 ZIG_CMD="${ZIG_CMD:-zig}"
@@ -13,9 +13,9 @@ VERSION=$("$ZIG_CMD" version)
 MAJOR=$(echo "$VERSION" | cut -d. -f1)
 MINOR=$(echo "$VERSION" | cut -d. -f2)
 
-if [[ "$MAJOR" -eq 0 && "$MINOR" -ge 16 ]] || [[ "$MAJOR" -ge 1 ]]; then
+if [[ "$MAJOR" -eq 0 && "$MINOR" -ge 17 ]] || [[ "$MAJOR" -ge 1 ]]; then
     echo "OK: Zig $VERSION detected."
 else
-    echo "WARNING: Zig $VERSION detected, this skill is for 0.16+."
+    echo "WARNING: Zig $VERSION detected, this skill is for 0.17+."
     exit 1
 fi

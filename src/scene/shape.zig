@@ -57,8 +57,8 @@ pub fn Shape(comptime T: type) type {
         /// business rather than the geometry's.
         pub const max_hits = blk: {
             var most: usize = 0;
-            for (@typeInfo(Geometry).@"union".fields) |field| {
-                most = @max(most, field.type.max_hits);
+            for (@typeInfo(Geometry).@"union".field_types) |Field| {
+                most = @max(most, Field.max_hits);
             }
             break :blk most;
         };
@@ -260,7 +260,7 @@ pub fn Shape(comptime T: type) type {
             var out = inv.transpose().mulTuple(normal);
             // A translation in the transform leaks into w through the
             // transpose; clearing it keeps the result a vector.
-            out.v[@intFromEnum(tuple.Axis.w)] = 0;
+            out.v[@backingInt(tuple.Axis.w)] = 0;
             out = out.normalizeChecked() catch return null;
 
             if (self.parent) |parent| return parent.normalToWorld(out);

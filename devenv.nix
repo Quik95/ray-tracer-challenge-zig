@@ -3,13 +3,13 @@
 {
   languages.zig = {
     enable = true;
-    package = pkgs.zig_0_16;
+    package = pkgs.zig_0_17;
   };
 
   # Node is here only so `skills` (skills.sh CLI) works in the shell.
   languages.javascript = {
     enable = true;
-    package = pkgs.nodejs_24;
+    package = pkgs.nodejs_26;
   };
 
   packages = with pkgs; [
@@ -34,7 +34,7 @@
   # Static analysis + workflow vulnerability audit. Used locally and in CI.
   scripts.lint.exec = ''
     set -e
-    zig fmt --check .
+    zig fmt --check --exclude zig-pkg .
     actionlint
     zizmor --persona=pedantic .github/workflows
   '';

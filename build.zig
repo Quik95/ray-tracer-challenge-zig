@@ -1,4 +1,5 @@
 const std = @import("std");
+const Translator = @import("translate_c").Translator;
 
 // zigimg crashes the self-hosted x86 backend, so everything that reaches its
 // code is compiled through LLVM. Upstream does the same for its own tests.
@@ -24,13 +25,13 @@ pub fn build(b: *std.Build) void {
     mod.addOptions("build_options", build_options);
     if (avif) {
         const header = b.addWriteFiles().add("avif.h", "#include <avif/avif.h>\n");
-        const translate_c = b.addTranslateC(.{
-            .root_source_file = header,
+        const translator: Translator = .init(b.dependency("translate_c", .{}), .{
+            .c_source_file = header,
             .target = target,
             .optimize = optimize,
+            .link_system_libs = &.{.{ .name = "libavif" }},
         });
-        translate_c.linkSystemLibrary("libavif", .{});
-        mod.addImport("avif_c", translate_c.createModule());
+        mod.addImport("avif_c", translator.mod);
     }
 
     // The demo draws a few meshes too large to write out by hand, so the
@@ -57,7 +58,7 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     run_step.dependOn(&run_cmd.step);
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     // Zig only runs tests in files the compiler actually analyzes, and 0.16
     // dropped `refAllDeclsRecursive`. src/root.zig imports every module
@@ -79,7 +80,8 @@ pub fn build(b: *std.Build) void {
 
 /// Paths of the `.zig` files under `sub_path`, relative to it and including
 /// subdirectories, sorted for a stable build hash. Read at configure time, so
-/// a new file invalidates the cache.
+/// every directory walked is declared a configure dependency: a new file
+/// reruns the configure step instead of reusing the cached listing.
 fn listZigSources(b: *std.Build, sub_path: []const u8) []const []const u8 {
     var names: std.ArrayList([]const u8) = .empty;
     collectZigSources(b, &names, sub_path, "");
@@ -100,7 +102,8 @@ fn collectZigSources(
     prefix: []const u8,
 ) void {
     const io = b.graph.io;
-    var dir = b.build_root.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err|
+    b.dependOnDirectoryContents(b.path(dir_path));
+    var dir = b.root.openDir(io, dir_path, .{ .iterate = true }) catch |err|
         std.debug.panic("unable to open {s}: {s}", .{ dir_path, @errorName(err) });
     defer dir.close(io);
 

@@ -198,7 +198,7 @@ pub fn main(init: std.process.Init) !void {
             else
                 try gpa.dupe(u8, out);
             defer gpa.free(group);
-            const name = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ scene.name(), @tagName(job.format) });
+            const name = try gpa.print("{s}.{s}", .{ scene.name(), @tagName(job.format) });
             defer gpa.free(name);
             const path = try std.fs.path.join(gpa, &.{ group, name });
             defer gpa.free(path);

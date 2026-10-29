@@ -1,6 +1,6 @@
 # The Ray Tracer Challenge in Zig
 
-A ray tracer written from scratch in [Zig](https://ziglang.org) 0.16 while
+A ray tracer written from scratch in [Zig](https://ziglang.org) 0.17 while
 working through _The Ray Tracer Challenge_ by Jamis Buck. The implementation
 follows the book's test scenarios.
 
@@ -35,7 +35,7 @@ Renders of every supported scene are in [`gallery/`](gallery/).
 
 ## Building
 
-The project requires Zig 0.16.0. The repository pins the compiler and linters
+The project requires Zig 0.17.0. The repository pins the compiler and linters
 in a [devenv](https://devenv.sh) shell, which direnv activates on entry.
 
 ```sh

@@ -43,14 +43,14 @@ jobs:
 
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install libavif
         if: matrix.avif
         run: sudo apt-get update && sudo apt-get install -y libavif-dev pkg-config
 
       - name: Check formatting
-        run: zig fmt --check .
+        run: zig fmt --check --exclude zig-pkg .
 
       - name: Build
         run: zig build -Davif="$AVIF" --summary all
@@ -70,11 +70,11 @@ jobs:
 
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.16.0
+          version: 0.17.0
 
       - name: Install zlint
         env:
-          ZLINT_VERSION: "0.9.1"
+          ZLINT_VERSION: "0.10.0"
         run: |
           curl -fsSL -o zlint \
             "https://github.com/DonIsaac/zlint/releases/download/v$ZLINT_VERSION/zlint-linux-x86_64"
@@ -93,7 +93,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
         with:
           extra_nix_config: |
             accept-flake-config = true

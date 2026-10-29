@@ -107,7 +107,7 @@ pub fn Gallery(comptime T: type) type {
         /// that loads a mesh takes an allocator and hands back something to
         /// free.
         fn needsAllocator(comptime Scene: type) bool {
-            return @typeInfo(@TypeOf(Scene.objects)).@"fn".params.len == 1;
+            return @typeInfo(@TypeOf(Scene.objects)).@"fn".param_types.len == 1;
         }
 
         /// The scene's whole pipeline behind one function pointer. A world
