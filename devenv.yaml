@@ -1,6 +1,9 @@
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
+  # zizmor only: devenv-nixpkgs lags, and lockfile support needs zizmor >= 1.32.
+  nixpkgs-unstable:
+    url: github:NixOS/nixpkgs/nixpkgs-unstable
   git-hooks:
     url: github:cachix/git-hooks.nix
     inputs:

@@ -1,5 +1,9 @@
-{ pkgs, ... }:
+{ pkgs, inputs, ... }:
 
+let
+  # Lockfile-aware (>= 1.32); see the nixpkgs-unstable input in devenv.yaml.
+  zizmor = inputs.nixpkgs-unstable.legacyPackages.${pkgs.stdenv.system}.zizmor;
+in
 {
   languages.zig = {
     enable = true;
@@ -47,6 +51,9 @@
 
   git-hooks.hooks = {
     actionlint.enable = true;
-    zizmor.enable = true;
+    zizmor = {
+      enable = true;
+      package = zizmor;
+    };
   };
 }
